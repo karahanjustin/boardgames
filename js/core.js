@@ -63,7 +63,7 @@
   function header(backFn, title) {
     var head = h('header', 'top');
     if (backFn) { var b = h('button', 'btn ghost back', '‹ ' + t('back')); b.onclick = backFn; head.appendChild(b); }
-    var brand = h('div', 'brand'); brand.innerHTML = '<span>' + esc(title || t('title')) + '</span>' + (title ? '' : '<small>' + esc(t('tagline')) + '</small>'); head.appendChild(brand);
+    var brand = h('div', 'brand'); brand.innerHTML = '<span class="logo">' + root.Icons.get('dice', 26) + '</span><span>' + esc(title || t('title')) + '</span>'; head.appendChild(brand);
     var right = h('div', 'right');
     var lang = h('button', 'btn ghost', root.I18N.lang === 'de' ? 'EN' : 'DE'); lang.title = t('lang'); lang.onclick = function () { root.I18N.set(root.I18N.lang === 'de' ? 'en' : 'de'); if (current) current(); };
     var snd = h('button', 'btn ghost'); snd.innerHTML = root.Icons.get(settings.sound ? 'sound' : 'mute', 18); snd.title = t('sound'); snd.onclick = function () { settings.sound = !settings.sound; store.set('settings', settings); snd.innerHTML = root.Icons.get(settings.sound ? 'sound' : 'mute', 18); };
@@ -78,7 +78,7 @@
     current = hub;
     var el = h('div', 'screen hub');
     el.appendChild(header(null));
-    var intro = h('div', 'intro'); intro.innerHTML = '<div><h1>' + esc(t('title')) + ', <em>' + esc(t('classics')) + '</em></h1><p>' + esc(t('intro')) + '</p></div><div class="facts">' + esc(t('fact1')) + '<br>' + esc(t('fact2')) + '<br>' + esc(t('fact3')) + '</div>'; el.appendChild(intro);
+    var intro = h('p', 'tagline', t('tagline')); el.appendChild(intro);
     var bar = h('div', 'bar');
     var chips = h('div', 'chips');
     [['all', 'all'], ['two', 'two'], ['many', 'many'], ['solo', 'solo']].forEach(function (f) { var c = h('button', 'chip' + (filter === f[0] ? ' on' : ''), t(f[1])); c.onclick = function () { filter = f[0]; hub(); }; chips.appendChild(c); });
@@ -99,7 +99,7 @@
       list.forEach(function (G) {
         var card = h('button', 'card');
         var st = stats[G.id] || { played: 0, won: 0 };
-        card.innerHTML = '<span class="icon">' + root.Icons.get(G.id, 30) + '</span><b>' + esc(root.I18N.name(G.name)) + '</b><span class="meta">' + esc(countText(G)) + (st.played ? ', ' + st.won + '/' + st.played + ' ' + t('won') : '') + '</span><span class="blurb">' + esc(root.I18N.name(G.blurb)) + '</span>';
+        card.innerHTML = '<span class="icon">' + root.Icons.get(G.id, 38) + '</span><b>' + esc(root.I18N.name(G.name)) + '</b><span class="blurb">' + esc(root.I18N.name(G.blurb)) + '</span><span class="meta">' + esc(countText(G)) + (st.played ? ' · ' + st.won + '/' + st.played + ' ' + t('won') : '') + '</span>';
         card.onclick = function () { setup(G); };
         grid.appendChild(card);
       });
