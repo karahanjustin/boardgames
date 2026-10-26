@@ -1,0 +1,1 @@
+{ "name": "Spielkiste", "short_name": "Spielkiste", "start_url": "./", "scope": "./", "display": "standalone", "background_color": "#1b2433", "theme_color": "#1b2433", "description": "Die Klassiker: gegen den Computer, am selben Gerät oder über eine direkte Verbindung.", "icons": [{ "src": "icon.png", "sizes": "512x512", "type": "image/png" }] }
