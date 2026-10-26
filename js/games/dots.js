@@ -173,13 +173,13 @@
         }
         function edgeAt(x, y) {
           if (!geo || !view) return null;
-          var best = null, bd = geo.cell * 0.4, r, c, d;
+          var best = null, bd = geo.cell * 0.4, r, c, d, dx, dy;
           for (r = 0; r <= view.h; r++) for (c = 0; c < view.w; c++) {
-            d = Math.hypot(x - (geo.pad + (c + 0.5) * geo.cell), y - (geo.pad + r * geo.cell));
+            dx = x - (geo.pad + (c + 0.5) * geo.cell); dy = y - (geo.pad + r * geo.cell); d = Math.sqrt(dx * dx + dy * dy);
             if (d < bd) { bd = d; best = { h: r * view.w + c }; }
           }
           for (r = 0; r < view.h; r++) for (c = 0; c <= view.w; c++) {
-            d = Math.hypot(x - (geo.pad + c * geo.cell), y - (geo.pad + (r + 0.5) * geo.cell));
+            dx = x - (geo.pad + c * geo.cell); dy = y - (geo.pad + (r + 0.5) * geo.cell); d = Math.sqrt(dx * dx + dy * dy);
             if (d < bd) { bd = d; best = { v: r * (view.w + 1) + c }; }
           }
           return best;

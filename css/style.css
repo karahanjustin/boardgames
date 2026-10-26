@@ -9,7 +9,8 @@ input, textarea { font: inherit; color: var(--ink); background: rgba(0,0,0,.25);
 input:focus, textarea:focus { border-color: var(--acc); }
 textarea { resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; word-break: break-all; }
 .top { display: flex; align-items: center; gap: 10px; padding: 14px 0 10px; position: sticky; top: 0; background: linear-gradient(var(--bg), rgba(27,36,51,.92) 80%, transparent); z-index: 5; }
-.brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 20px; letter-spacing: .02em; flex: 1; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 20px; letter-spacing: .02em; flex: 1; min-width: 0; }
+.brand span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .brand .logo { font-size: 26px; }
 .top .right { display: flex; gap: 6px; }
 .btn { border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 10px 16px; cursor: pointer; font-weight: 600; transition: transform .08s, background .15s; }

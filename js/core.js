@@ -371,14 +371,16 @@
     if (p >= 0 && this.players[p].kind === 'ai') {
       this.busy = true;
       clearTimeout(this.think);
-      this.think = setTimeout(function () {
+      var tick = function () {
         if (self.closed) return;
         var a = null;
         try { a = G.ai(self.state, p, self.players[p].level || 2, self.rng); } catch (e) { console.error(e); }
         if (a == null || !self.legal(p, a)) { console.warn('AI illegal action', G.id, a); var acts = G.actions(self.state, p) || []; a = acts.length ? self.rng.pick(acts) : null; }
         self.busy = false;
         if (a) self.actFrom(p, a);
-      }, 350 + Math.random() * 250);
+      };
+      if (root.App && root.App.fast) tick(); // the tests: no pause, no timer (a hidden tab throttles timers)
+      else this.think = setTimeout(tick, 350 + Math.random() * 250);
     }
   };
   Match.prototype.actFrom = function (p, a) {
@@ -478,10 +480,16 @@
   };
   Match.prototype.destroy = function () { this.closed = true; clearTimeout(this.think); if (this.ui && this.ui.destroy) try { this.ui.destroy(); } catch (e) { /* gone */ } if (match === this) match = null; };
 
-  root.App = { hub: hub, setup: setup, toast: toast, sound: sound, rng: rng, COLORS: COLORS, get match() { return match; }, startMatch: startMatch };
+  root.App = { hub: hub, setup: setup, toast: toast, sound: sound, rng: rng, COLORS: COLORS, get match() { return match; }, startMatch: startMatch, fast: false };
   document.addEventListener('DOMContentLoaded', function () {
     // a game named in the address opens straight away (links from the hub)
-    var m = /[?&]game=([a-z0-9]+)/.exec(location.search);
-    if (m && root.Games.get(m[1])) setup(root.Games.get(m[1])); else hub();
+    var m = /[?&]game=([a-z0-9]+)/.exec(location.search), G = m && root.Games.get(m[1]);
+    if (G && /[?&]start=ai/.test(location.search)) {
+      // a link that starts a game against the computer at once (also used for the screenshots)
+      var n = +((/[?&]n=(\d)/.exec(location.search) || [])[1]) || G.counts[Math.min(1, G.counts.length - 1)], ps = [];
+      if (G.counts.indexOf(n) < 0) n = G.counts[0];
+      for (var i = 0; i < n; i++) ps.push(i === 0 ? { name: settings.name || t('you'), kind: 'local' } : { name: t('ai') + ' ' + i, kind: 'ai', level: settings.level || 2 });
+      startMatch(G, ps, { host: true });
+    } else if (G) setup(G); else hub();
   });
 })(typeof self !== 'undefined' ? self : this);

@@ -46,27 +46,34 @@ s = mk(2);
 [{ h: 0 }, { v: 0 }, { v: 1 }].forEach((a) => { s = G.apply(s, s.turn, a, r).state; });
 ok(s.turn === 1, 'player 1 is to move with a box on offer');
 ok(G.ai(s, 1, 2, r).h === 6 && G.ai(s, 1, 3, r).h === 6, 'the normal and hard AI take the open box');
-let gifts = 0;
-for (let i = 0; i < 50; i++) { const a = G.ai(s, 1, 1, K.rng(i)); if (a.h !== 6 && [{ h: 0 }].length) { const t = G.apply(s, 1, a, r).state; for (let b = 0; b < 36; b++) if (t.owner[b] < 0 && [t.hl, t.vl] && sidesOf(t, b) === 3 && !(b === 0)) gifts++; } }
+// the easy AI, on the same board, never creates a new three sided box (box 0 already has three)
 function sidesOf(t, b) { const row = Math.floor(b / t.w), col = b % t.w; let k = 0; if (t.hl[row * t.w + col] >= 0) k++; if (t.hl[(row + 1) * t.w + col] >= 0) k++; if (t.vl[row * (t.w + 1) + col] >= 0) k++; if (t.vl[row * (t.w + 1) + col + 1] >= 0) k++; return k; }
+let gifts = 0;
+for (let i = 0; i < 50; i++) {
+  const a = G.ai(s, 1, 1, K.rng(i)), t = G.apply(s, 1, a, r).state;
+  for (let b = 1; b < 36; b++) if (t.owner[b] < 0 && sidesOf(t, b) === 3) gifts++;
+}
 ok(gifts === 0, 'the easy AI never creates a new three sided box while safe moves exist (' + gifts + ')');
-// the hard AI sacrifices the smaller chain when every move gives something away: a 2x1 strip against a 4x1 strip
-// is hard to build on the full board, so check the helper behaviour on a nearly finished board instead
-s = mk(2);
-// Draw every edge except those inside two separate corridors: boxes 0,1 (top left) and boxes 30..35 (bottom row).
-const keep = new Set();
-keep.add('v1'); // between box 0 and box 1
-for (let c = 0; c < 5; c++) keep.add('v' + (5 * 7 + c + 1)); // between the bottom row boxes 30..35
+// the hard AI sacrifices the smaller chain when every move gives something away: build an end position with a
+// closed corridor of two boxes (0 and 1, free edges h0, v1, h1) and one of six boxes (the bottom row, free edges
+// v35..v41); every other edge is drawn and every other box owned.
 let t = mk(2);
-for (let i = 0; i < t.hl.length; i++) t.hl[i] = i % 2;
-for (let i = 0; i < t.vl.length; i++) if (!keep.has('v' + i)) t.vl[i] = i % 2;
-t.free = keep.size; t.turn = 0;
-// Every remaining edge opens a chain: the short one (2 boxes) or the long one (6 boxes).
-const acts = G.actions(t, 0);
-ok(acts.length === 6 && acts.every((a) => a.v != null), 'the test board leaves six vertical edges');
-let chosen = {};
-for (let i = 0; i < 20; i++) { const a = G.ai(t, 0, 3, K.rng(100 + i)); chosen[a.v] = true; }
-ok(Object.keys(chosen).length === 1 && chosen[1], 'the hard AI opens the two box chain, not the six box one (' + Object.keys(chosen).join(',') + ')');
+const freeH = new Set([0, 1]), freeV = new Set([1, 35, 36, 37, 38, 39, 40, 41]);
+for (let i = 0; i < t.hl.length; i++) if (!freeH.has(i)) t.hl[i] = i % 2;
+for (let i = 0; i < t.vl.length; i++) if (!freeV.has(i)) t.vl[i] = i % 2;
+for (let b = 0; b < 36; b++) if (sidesOf(t, b) === 4) { t.owner[b] = b % 2; t.score[b % 2]++; }
+t.free = freeH.size + freeV.size; t.turn = 0;
+ok(G.actions(t, 0).length === 10 && [0, 1].every((b) => sidesOf(t, b) === 2) && [30, 31, 32, 33, 34, 35].every((b) => sidesOf(t, b) === 2), 'the end position has ten free edges and two closed corridors');
+const chosen = {};
+for (let i = 0; i < 20; i++) { const a = G.ai(t, 0, 3, K.rng(100 + i)); chosen[a.h != null ? 'h' + a.h : 'v' + a.v] = true; }
+ok(Object.keys(chosen).every((k) => k === 'h0' || k === 'h1' || k === 'v1'), 'the hard AI opens the two box corridor, never the six box one (' + Object.keys(chosen).join(',') + ')');
+// the normal AI, faced with the same choice, may open either, but the hard AI gives away exactly two boxes
+let t2 = G.apply(t, 0, G.ai(t, 0, 3, K.rng(3)), r).state, taken = 0;
+while (G.actions(t2, 1).some((a) => { const u = G.apply(t2, 1, a, r).state; return u.score[1] > t2.score[1]; })) {
+  const a = G.actions(t2, 1).find((x) => G.apply(t2, 1, x, r).state.score[1] > t2.score[1]);
+  const u = G.apply(t2, 1, a, r).state; taken += u.score[1] - t2.score[1]; t2 = u;
+}
+ok(taken === 2, 'the opponent can collect exactly two boxes after the sacrifice (' + taken + ')');
 // random games with the AI at every level and count
 const rr = K.playRandomGames(G, { games: 12 });
 ok(rr.illegal === 0 && rr.mutated === 0 && !rr.err, 'the AI never plays an illegal action and apply never mutates');
