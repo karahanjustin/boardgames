@@ -63,10 +63,10 @@
   function header(backFn, title) {
     var head = h('header', 'top');
     if (backFn) { var b = h('button', 'btn ghost back', '‹ ' + t('back')); b.onclick = backFn; head.appendChild(b); }
-    var brand = h('div', 'brand'); brand.innerHTML = '<span class="logo">🎲</span><span>' + esc(title || t('title')) + '</span>'; head.appendChild(brand);
+    var brand = h('div', 'brand'); brand.innerHTML = '<span>' + esc(title || t('title')) + '</span>' + (title ? '' : '<small>' + esc(t('tagline')) + '</small>'); head.appendChild(brand);
     var right = h('div', 'right');
     var lang = h('button', 'btn ghost', root.I18N.lang === 'de' ? 'EN' : 'DE'); lang.title = t('lang'); lang.onclick = function () { root.I18N.set(root.I18N.lang === 'de' ? 'en' : 'de'); if (current) current(); };
-    var snd = h('button', 'btn ghost', settings.sound ? '🔊' : '🔇'); snd.title = t('sound'); snd.onclick = function () { settings.sound = !settings.sound; store.set('settings', settings); snd.textContent = settings.sound ? '🔊' : '🔇'; };
+    var snd = h('button', 'btn ghost'); snd.innerHTML = root.Icons.get(settings.sound ? 'sound' : 'mute', 18); snd.title = t('sound'); snd.onclick = function () { settings.sound = !settings.sound; store.set('settings', settings); snd.innerHTML = root.Icons.get(settings.sound ? 'sound' : 'mute', 18); };
     right.appendChild(snd); right.appendChild(lang); head.appendChild(right);
     return head;
   }
@@ -78,7 +78,7 @@
     current = hub;
     var el = h('div', 'screen hub');
     el.appendChild(header(null));
-    var intro = h('p', 'tagline', t('tagline')); el.appendChild(intro);
+    var intro = h('div', 'intro'); intro.innerHTML = '<div><h1>' + esc(t('title')) + ', <em>' + esc(t('classics')) + '</em></h1><p>' + esc(t('intro')) + '</p></div><div class="facts">' + esc(t('fact1')) + '<br>' + esc(t('fact2')) + '<br>' + esc(t('fact3')) + '</div>'; el.appendChild(intro);
     var bar = h('div', 'bar');
     var chips = h('div', 'chips');
     [['all', 'all'], ['two', 'two'], ['many', 'many'], ['solo', 'solo']].forEach(function (f) { var c = h('button', 'chip' + (filter === f[0] ? ' on' : ''), t(f[1])); c.onclick = function () { filter = f[0]; hub(); }; chips.appendChild(c); });
@@ -99,14 +99,14 @@
       list.forEach(function (G) {
         var card = h('button', 'card');
         var st = stats[G.id] || { played: 0, won: 0 };
-        card.innerHTML = '<span class="icon">' + G.icon + '</span><b>' + esc(root.I18N.name(G.name)) + '</b><span class="blurb">' + esc(root.I18N.name(G.blurb)) + '</span><span class="meta">' + esc(countText(G)) + (st.played ? ' · ' + st.won + '/' + st.played + ' ' + t('won') : '') + '</span>';
+        card.innerHTML = '<span class="icon">' + root.Icons.get(G.id, 30) + '</span><b>' + esc(root.I18N.name(G.name)) + '</b><span class="meta">' + esc(countText(G)) + (st.played ? ', ' + st.won + '/' + st.played + ' ' + t('won') : '') + '</span><span class="blurb">' + esc(root.I18N.name(G.blurb)) + '</span>';
         card.onclick = function () { setup(G); };
         grid.appendChild(card);
       });
       if (!list.length) grid.appendChild(h('p', 'empty', t('nGames', 0)));
     }
     renderGrid();
-    var foot = h('p', 'foot'); foot.textContent = t('noServer') + ' ' + t('installHint'); el.appendChild(foot);
+    var foot = h('p', 'foot'); foot.textContent = t('noServer') + ' ' + t('lanHint') + ' ' + t('installHint'); el.appendChild(foot);
     show(el);
   }
 
@@ -162,7 +162,7 @@
       } else if (setupMode === 'hot') {
         startMatch(G, names.map(function (inp) { return { name: inp.value.trim() || t('player'), kind: 'local' }; }), { host: true, hot: true });
       } else if (setupMode === 'host') lobbyHost(G, count, level, me);
-      else lobbyJoin(G, me);
+      else lobbyJoin(G, (settings.name || '').trim() || t('player'));
     };
     box.appendChild(go);
     el.appendChild(box);
@@ -171,32 +171,63 @@
 
   /* ---------- the lobby: hosting ---------- */
   var net = null; // the host's or guest's connection object while a table is open
-  function codeBox(label, code, hintText) {
-    var wrap = h('div', 'codebox'); wrap.appendChild(h('div', 'label', label));
-    var ta = h('textarea'); ta.readOnly = true; ta.value = code; ta.rows = 3; wrap.appendChild(ta);
+  /* The invitation and the answer travel as links (shared, or shown as a QR code for a phone camera); the raw
+     code sits behind a fold for whoever wants to type it. */
+  var baseUrl = function () { return location.origin + location.pathname.replace(/[^/]*$/, ''); };
+  var linkFor = function (kind, code) { return baseUrl() + '#' + kind + '=' + code.replace(/\s+/g, ''); };
+  // a pasted link, a scanned link or a bare code: the code in it
+  function codeFrom(text) { var m = /[#&?](?:join|answer)=([A-Za-z2-7]+)/.exec(text || ''); return m ? m[1] : (text || ''); }
+  function linkBox(kind, code, hintText, shareTitle) {
+    var link = linkFor(kind, code), wrap = h('div', 'codebox');
+    wrap.appendChild(h('div', 'label', kind === 'join' ? t('inviteLink') : t('answer')));
+    var qr = h('div', 'qr'); try { qr.innerHTML = root.QR.svg(link, 230, 'L'); } catch (e) { qr.textContent = ''; } wrap.appendChild(qr);
     var row = h('div', 'row');
-    var cp = h('button', 'btn small', t('copy')); cp.onclick = function () { (navigator.clipboard ? navigator.clipboard.writeText(code) : Promise.reject()).then(function () { toast(t('copied')); }, function () { ta.select(); toast(t('copyFail')); }); };
-    row.appendChild(cp);
-    if (navigator.share) { var sh = h('button', 'btn small', t('share')); sh.onclick = function () { navigator.share({ text: code }).catch(function () { /* cancelled */ }); }; row.appendChild(sh); }
-    wrap.appendChild(row); wrap.appendChild(h('p', 'hint', hintText));
+    if (navigator.share) { var sh = h('button', 'btn small primary', t('share')); sh.onclick = function () { navigator.share({ title: shareTitle, text: shareTitle, url: link }).catch(function () { /* cancelled */ }); }; row.appendChild(sh); }
+    var cp = h('button', 'btn small' + (navigator.share ? '' : ' primary'), t('copy')); cp.onclick = function () { (navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject()).then(function () { toast(t('linkCopied')); }, function () { toast(t('copyFail')); }); };
+    row.appendChild(cp); wrap.appendChild(row);
+    wrap.appendChild(h('p', 'hint', hintText));
+    var det = h('details'); det.appendChild(h('summary', '', t('codeRaw')));
+    var ta = h('textarea'); ta.readOnly = true; ta.value = code; ta.rows = 3; det.appendChild(ta); wrap.appendChild(det);
     return wrap;
   }
-  function pasteBox(label, onCode) {
+  function pasteBox(label, hintText, onCode) {
     var wrap = h('div', 'codebox'); wrap.appendChild(h('div', 'label', label));
-    var ta = h('textarea'); ta.rows = 3; ta.placeholder = 'ABCD EFGH ...'; ta.autocapitalize = 'characters'; ta.spellcheck = false; wrap.appendChild(ta);
+    var ta = h('textarea'); ta.rows = 2; ta.placeholder = baseUrl() + '#...'; ta.spellcheck = false; wrap.appendChild(ta);
     var row = h('div', 'row');
-    if (navigator.clipboard && navigator.clipboard.readText) { var pb = h('button', 'btn small', t('paste')); pb.onclick = function () { navigator.clipboard.readText().then(function (v) { ta.value = v; }, function () { ta.focus(); }); }; row.appendChild(pb); }
-    var go = h('button', 'btn small primary', t('connect')); go.onclick = function () { var v = ta.value.trim(); if (!v) { ta.focus(); return; } go.disabled = true; onCode(v).then(function () { go.disabled = false; }, function () { go.disabled = false; toast(t('codeBad')); }); };
+    var go = h('button', 'btn small primary', t('connect'));
+    var take = function (text) { go.disabled = true; return onCode(codeFrom(text)).then(function () { go.disabled = false; }, function () { go.disabled = false; toast(t('codeBad')); }); };
+    if (typeof BarcodeDetector !== 'undefined' && navigator.mediaDevices) { var sc = h('button', 'btn small', t('scanQr')); sc.onclick = function () { var box = scanner(function (text) { take(text); }); if (box) wrap.insertBefore(box, row); }; row.appendChild(sc); }
+    if (navigator.clipboard && navigator.clipboard.readText) { var pb = h('button', 'btn small', t('paste')); pb.onclick = function () { navigator.clipboard.readText().then(function (v) { ta.value = v; take(v); }, function () { ta.focus(); }); }; row.appendChild(pb); }
+    go.onclick = function () { var v = ta.value.trim(); if (!v) { ta.focus(); return; } take(v); };
     row.appendChild(go); wrap.appendChild(row);
+    wrap.appendChild(h('p', 'hint', hintText));
     return wrap;
   }
-  function lobbyHost(G, count, level, myName) {
+  // the camera reads a QR code (where the browser can: Chrome, Android)
+  function scanner(onText) {
+    var box = h('div', 'scan'), video = h('video'); video.setAttribute('playsinline', ''); video.muted = true; box.appendChild(video);
+    var stop = h('button', 'btn small', t('stopScan')); box.appendChild(stop);
+    var det, stream = null, timer = 0, done = false;
+    try { det = new BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { toast(t('scanNo')); return null; }
+    function close() { done = true; clearInterval(timer); if (stream) stream.getTracks().forEach(function (tr) { tr.stop(); }); if (box.parentNode) box.parentNode.removeChild(box); }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(function (st) {
+      stream = st; video.srcObject = st; video.play();
+      timer = setInterval(function () { if (done) return; det.detect(video).then(function (codes) { if (codes.length && codes[0].rawValue) { close(); onText(codes[0].rawValue); } }).catch(function () { /* a frame without a code */ }); }, 350);
+    }, function () { toast(t('noCamera')); close(); });
+    stop.onclick = close;
+    return box;
+  }
+  // the answer link opened in another window hands its code to the waiting host window
+  var channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('spielkiste') : null;
+  function lobbyHost(G, count, level, myName, autoInvite) {
     if (net) net.close();
     net = root.Net.host();
     var seats = [{ name: myName, kind: 'local' }];
     for (var i = 1; i < count; i++) seats.push({ name: '', kind: 'open' });
     var guestNames = {};
     net.on('message', function (peer, msg) { if (msg.t === 'hello') { guestNames[peer.id] = msg.name; render(); } });
+    var takeAnswer = function (code) { return net.accept(code).then(function (peer) { var seatI = pendingSeat; if (seatI >= 0) { seats[seatI].kind = 'remote'; seats[seatI].peer = peer.id; } pendingCode = null; pendingSeat = -1; toast(t('codeOk')); sound('turn'); render(); }); };
+    if (channel) channel.onmessage = function (e) { var m = e.data || {}; if (m.t === 'answer' && pendingCode) { channel.postMessage({ t: 'ack', code: m.code }); takeAnswer(codeFrom(m.code)).catch(function () { toast(t('codeBad')); }); } };
     net.on('close', function (peer) { seats.forEach(function (s) { if (s.peer === peer.id) { s.kind = 'open'; s.name = ''; } }); render(); toast(t('disconnected', guestNames[peer.id] || '')); });
     net.on('open', function () { render(); });
     var pendingCode = null, pendingSeat = -1;
@@ -223,17 +254,15 @@
       var openSeat = -1; seats.forEach(function (s, i) { if (openSeat < 0 && s.kind === 'open') openSeat = i; });
       if (openSeat >= 0) {
         if (pendingCode && pendingSeat === openSeat) {
-          box.appendChild(codeBox(t('invite'), pendingCode, t('inviteHint')));
-          box.appendChild(pasteBox(t('answerPaste'), function (code) {
-            return net.accept(code).then(function (peer) { seats[openSeat].kind = 'remote'; seats[openSeat].peer = peer.id; pendingCode = null; pendingSeat = -1; toast(t('codeOk')); sound('turn'); render(); });
-          }));
+          box.appendChild(linkBox('join', pendingCode, t('inviteHint'), t('shareTitle')));
+          box.appendChild(pasteBox(t('answerPaste'), t('answerPasteHint'), takeAnswer));
         } else {
           var mk = h('button', 'btn primary', pendingCode ? t('nextGuest') : t('makeCode'));
           mk.onclick = function () { mk.disabled = true; mk.textContent = t('connecting'); net.invite().then(function (code) { pendingCode = code; pendingSeat = openSeat; render(); }, function (e) { toast(t('rtcNo')); mk.disabled = false; }); };
           box.appendChild(mk);
+          if (autoInvite) { autoInvite = false; setTimeout(function () { mk.onclick(); }, 0); }
         }
       }
-      box.appendChild(h('p', 'hint', t('noServer') + ' ' + t('lanHint')));
       var canStart = seats.every(function (s) { return s.kind !== 'open'; });
       var fill = h('button', 'btn', t('fillAi')); fill.onclick = function () { seats.forEach(function (s) { if (s.kind === 'open') { s.kind = 'ai'; s.level = level; } }); render(); };
       if (!canStart && G.ai) box.appendChild(fill);
@@ -249,28 +278,46 @@
     render();
   }
   /* ---------- the lobby: joining ---------- */
-  function lobbyJoin(G, myName) {
+  function lobbyJoin(G, myName, autoCode) {
     if (net) { net.close(); net = null; }
     var el = h('div', 'screen lobby'), box = h('div', 'panel');
-    el.appendChild(header(function () { if (net) net.close(); net = null; setup(G); }, t('join')));
-    box.appendChild(h('h3', '', t('join')));
+    el.appendChild(header(function () { if (net) net.close(); net = null; if (G) setup(G); else hub(); }, t('join')));
+    box.appendChild(h('h3', '', autoCode ? t('joiningTitle') : t('join')));
     var status = h('p', 'hint', t('noServer'));
-    box.appendChild(pasteBox(t('joinPaste'), function (code) {
+    var joinWith = function (code) {
       return root.Net.join(code).then(function (conn) {
         net = conn;
         box.innerHTML = ''; box.appendChild(h('h3', '', t('join')));
-        box.appendChild(codeBox(t('answer'), conn.answer, t('answerHint')));
+        box.appendChild(linkBox('answer', conn.answer, t('answerHint'), t('answerShare')));
         var st = h('p', 'status', t('waiting')); box.appendChild(st);
         conn.on('open', function () { st.textContent = t('connected') + '. ' + t('waiting'); conn.send({ t: 'hello', name: myName }); sound('turn'); });
         conn.on('close', function () { st.textContent = t('reconnect'); });
         conn.on('message', function (peer, msg) {
-          if (msg.t === 'start') { var GG = root.Games.get(msg.game) || G; startMatch(GG, msg.players, { host: false, net: conn, seat: msg.seat, cfg: msg.cfg }); }
+          if (msg.t === 'start') { var GG = root.Games.get(msg.game) || G; if (!GG) return; startMatch(GG, msg.players, { host: false, net: conn, seat: msg.seat, cfg: msg.cfg }); }
         });
       });
-    }));
+    };
+    if (autoCode) { var busy = h('p', 'status', t('connecting')); box.appendChild(busy); joinWith(codeFrom(autoCode)).catch(function () { box.innerHTML = ''; box.appendChild(h('h3', '', t('join'))); toast(t('codeBad')); box.appendChild(pasteBox(t('joinPaste'), t('joinPasteHint'), joinWith)); box.appendChild(status); }); }
+    else box.appendChild(pasteBox(t('joinPaste'), t('joinPasteHint'), joinWith));
     box.appendChild(status);
     el.appendChild(box);
     show(el);
+  }
+  // the answer link, opened by the host: the code goes to the waiting window over the channel, else it is shown
+  function answerRelay(code) {
+    var el = h('div', 'screen lobby'), box = h('div', 'panel');
+    el.appendChild(header(hub, t('answer')));
+    box.appendChild(h('h3', '', t('answer')));
+    var st = h('p', 'status', t('connecting')); box.appendChild(st);
+    el.appendChild(box); show(el);
+    var acked = false;
+    if (channel) { channel.onmessage = function (e) { if (e.data && e.data.t === 'ack') { acked = true; st.textContent = t('answerTaken'); setTimeout(function () { try { window.close(); } catch (x) { /* stays open */ } }, 1200); } }; channel.postMessage({ t: 'answer', code: code }); }
+    setTimeout(function () {
+      if (acked) return;
+      st.textContent = t('answerOrphan'); st.className = 'hint';
+      var ta = h('textarea'); ta.readOnly = true; ta.value = code; ta.rows = 3; box.appendChild(ta);
+      var cp = h('button', 'btn small primary', t('copy')); cp.onclick = function () { (navigator.clipboard ? navigator.clipboard.writeText(code) : Promise.reject()).then(function () { toast(t('copied')); }, function () { ta.select(); toast(t('copyFail')); }); }; box.appendChild(cp);
+    }, 1500);
   }
 
   /* ---------- the match ---------- */
@@ -483,7 +530,12 @@
   root.App = { hub: hub, setup: setup, toast: toast, sound: sound, rng: rng, COLORS: COLORS, get match() { return match; }, startMatch: startMatch, fast: false };
   document.addEventListener('DOMContentLoaded', function () {
     // a game named in the address opens straight away (links from the hub)
+    var hj = /#join=([A-Za-z2-7]+)/.exec(location.hash), ha = /#answer=([A-Za-z2-7]+)/.exec(location.hash);
+    if (hj || ha) history.replaceState(null, '', location.pathname + location.search);
+    if (hj) { lobbyJoin(null, (settings.name || '').trim() || t('player'), hj[1]); return; }
+    if (ha) { answerRelay(ha[1]); return; }
     var m = /[?&]game=([a-z0-9]+)/.exec(location.search), G = m && root.Games.get(m[1]);
+    if (G && /[?&]start=host/.test(location.search)) { lobbyHost(G, G.counts[Math.min(1, G.counts.length - 1)], settings.level || 2, (settings.name || t('you')).trim() || t('you'), true); return; }
     if (G && /[?&]start=ai/.test(location.search)) {
       // a link that starts a game against the computer at once (also used for the screenshots)
       var n = +((/[?&]n=(\d)/.exec(location.search) || [])[1]) || G.counts[Math.min(1, G.counts.length - 1)], ps = [];

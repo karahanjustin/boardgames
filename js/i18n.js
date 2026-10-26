@@ -8,9 +8,9 @@
       players: 'Spieler', player: 'Spieler', you: 'Du', ai: 'Computer', aiLevel: 'Stärke', easy: 'Leicht', normal: 'Normal', hard: 'Schwer',
       mode: 'Modus', vsAi: 'Gegen den Computer', hotseat: 'Am selben Gerät', host: 'Runde eröffnen', join: 'Runde beitreten',
       name: 'Dein Name', nameHint: 'Wie sollen dich die anderen sehen?', count: 'Spielerzahl', start: 'Los geht\'s', lobby: 'Wartezimmer',
-      invite: 'Einladungscode', inviteHint: 'Schick diesen Code dem nächsten Mitspieler (WhatsApp, Nachricht, egal wie). Er fügt ihn bei "Runde beitreten" ein und schickt dir seinen Antwortcode zurück.',
-      answerPaste: 'Antwortcode des Mitspielers hier einfügen', answer: 'Antwortcode', answerHint: 'Schick diesen Code dem Gastgeber zurück. Sobald er ihn einfügt, seid ihr verbunden.',
-      joinPaste: 'Einladungscode des Gastgebers hier einfügen', connect: 'Verbinden', connecting: 'Verbinde', connected: 'Verbunden', waiting: 'Warten auf den Gastgeber',
+      invite: 'Einladungscode', 
+      
+      connect: 'Verbinden', connecting: 'Verbinde', connected: 'Verbunden', waiting: 'Warten auf den Gastgeber',
       makeCode: 'Code erzeugen', nextGuest: 'Nächsten Mitspieler einladen', seatFree: 'frei', seatAi: 'Computer', fillAi: 'Freie Plätze mit Computern füllen',
       noServer: 'Kein Server: die Geräte verbinden sich direkt miteinander (WebRTC). Der Gastgeber führt das Spiel.',
       turnOf: '{0} ist dran', yourTurn: 'Du bist dran', wait: 'Warte auf {0}', over: 'Spiel vorbei', youWin: 'Du gewinnst', wins: '{0} gewinnt', draw: 'Unentschieden', place: '{0}. Platz: {1}',
@@ -23,7 +23,8 @@
       lanHint: 'Alle im selben WLAN? Dann klappt es ohne Internet. Sonst geht es über das Netz, wenn kein Router dazwischenfunkt.',
       installHint: 'Auf dem Handy: Teilen, dann "Zum Home-Bildschirm". Dann startet die Spielkiste wie eine App.',
       reconnect: 'Verbindung weg. Der Gastgeber kann dir einen neuen Code schicken.', hotseatHint: 'Reicht das Gerät herum: jeder zieht, wenn er dran ist.',
-      aiHint: 'Du spielst gegen den Computer. Freie Plätze werden von Computern besetzt.', winsLabel: 'Siege', ranking: 'Platzierung', log: 'Verlauf', newMatch: 'Neues Spiel', howto: 'So geht\'s'
+      aiHint: 'Du spielst gegen den Computer. Freie Plätze werden von Computern besetzt.', winsLabel: 'Siege', ranking: 'Platzierung', log: 'Verlauf', newMatch: 'Neues Spiel', howto: 'So geht\'s',
+      inviteLink: "Einladung", inviteHint: "Schick dem nächsten Mitspieler den Link (Teilen, WhatsApp, egal wie) oder lass ihn den QR-Code mit der Handykamera scannen. Die Spielkiste öffnet sich bei ihm und schickt dir eine Antwort zurück.", answerHint: "Schick dem Gastgeber den Antwort-Link zurück, oder zeig ihm den QR-Code, er scannt ihn in seiner Spielkiste. Sobald er ihn hat, seid ihr verbunden.", answerPaste: "Antwort des Mitspielers", answerPasteHint: "Scan den QR-Code des Mitspielers oder füg seinen Antwort-Link ein.", joinPaste: "Einladung des Gastgebers", joinPasteHint: "Scan den QR-Code des Gastgebers mit der Kamera oder füg seinen Einladungs-Link hier ein.", scanQr: "QR-Code scannen", stopScan: "Scanner schließen", noCamera: "Keine Kamera verfügbar", scanNo: "Dieser Browser kann keine QR-Codes lesen, nimm den Link", codeRaw: "Code zum Abschreiben", linkCopied: "Link kopiert", answerTaken: "Antwort übernommen. Dieses Fenster kannst du schließen.", answerOrphan: "Kein wartendes Spielkisten-Fenster gefunden. Kopiere den Code und füg ihn beim Gastgeber ein.", joiningTitle: "Einladung angenommen", shareTitle: "Spielkiste: komm in meine Runde", answerShare: "Spielkiste: meine Antwort", answer: "Antwort", classics: "die Klassiker", intro: "Mensch ärgere Dich nicht, Schiffe versenken, Dame, Mühle, Kniffel, Mau-Mau und zwölf weitere. Gegen den Computer, zusammen an einem Gerät oder mit bis zu sechs Leuten über das Netz.", fact1: "18 Spiele, Deutsch und Englisch", fact2: "Kein Konto, kein Server, nichts wird gespeichert", fact3: "Läuft im Browser, auch offline als App"
     },
     en: {
       title: 'Spielkiste', tagline: 'The classics, at the table or over the net',
@@ -31,9 +32,9 @@
       players: 'Players', player: 'Player', you: 'You', ai: 'Computer', aiLevel: 'Strength', easy: 'Easy', normal: 'Normal', hard: 'Hard',
       mode: 'Mode', vsAi: 'Against the computer', hotseat: 'On this device', host: 'Host a table', join: 'Join a table',
       name: 'Your name', nameHint: 'How should the others see you?', count: 'Players', start: 'Start', lobby: 'Lobby',
-      invite: 'Invite code', inviteHint: 'Send this code to the next player (WhatsApp, message, any way). They paste it under "Join a table" and send you their answer code back.',
-      answerPaste: 'Paste the player\'s answer code here', answer: 'Answer code', answerHint: 'Send this code back to the host. As soon as they paste it, you are connected.',
-      joinPaste: 'Paste the host\'s invite code here', connect: 'Connect', connecting: 'Connecting', connected: 'Connected', waiting: 'Waiting for the host',
+      invite: 'Invite code', 
+      
+      connect: 'Connect', connecting: 'Connecting', connected: 'Connected', waiting: 'Waiting for the host',
       makeCode: 'Make a code', nextGuest: 'Invite the next player', seatFree: 'open', seatAi: 'Computer', fillAi: 'Fill open seats with computers',
       noServer: 'No server: the devices connect to each other directly (WebRTC). The host runs the game.',
       turnOf: '{0} to move', yourTurn: 'Your turn', wait: 'Waiting for {0}', over: 'Game over', youWin: 'You win', wins: '{0} wins', draw: 'Draw', place: '{0}. place: {1}',
@@ -46,7 +47,8 @@
       lanHint: 'All on the same Wi-Fi? Then it works without the internet. Otherwise it goes over the net, unless a router gets in the way.',
       installHint: 'On a phone: Share, then "Add to Home Screen". Spielkiste then starts like an app.',
       reconnect: 'Connection lost. The host can send you a new code.', hotseatHint: 'Pass the device round: everyone moves on their turn.',
-      aiHint: 'You play against the computer. Open seats are taken by computers.', winsLabel: 'Wins', ranking: 'Ranking', log: 'Log', newMatch: 'New game', howto: 'How to play'
+      aiHint: 'You play against the computer. Open seats are taken by computers.', winsLabel: 'Wins', ranking: 'Ranking', log: 'Log', newMatch: 'New game', howto: 'How to play',
+      inviteLink: "Invitation", inviteHint: "Send the next player the link (Share, WhatsApp, any way) or let them scan the QR code with the phone camera. Spielkiste opens on their side and sends you an answer back.", answerHint: "Send the answer link back to the host, or show them the QR code to scan in their Spielkiste. As soon as they have it, you are connected.", answerPaste: "The player's answer", answerPasteHint: "Scan the player's QR code or paste their answer link.", joinPaste: "The host's invitation", joinPasteHint: "Scan the host's QR code with the camera or paste their invite link here.", scanQr: "Scan a QR code", stopScan: "Close the scanner", noCamera: "No camera available", scanNo: "This browser cannot read QR codes, use the link", codeRaw: "Code to copy by hand", linkCopied: "Link copied", answerTaken: "Answer taken. You can close this window.", answerOrphan: "No waiting Spielkiste window found. Copy the code and paste it at the host.", joiningTitle: "Invitation accepted", shareTitle: "Spielkiste: join my table", answerShare: "Spielkiste: my answer", answer: "Answer", classics: "the classics", intro: "Ludo, Battleship, Draughts, Nine Men's Morris, Yahtzee, Mau-Mau and twelve more. Against the computer, together on one device, or with up to six people over the net.", fact1: "18 games, German and English", fact2: "No account, no server, nothing is stored", fact3: "Runs in the browser, offline as an app too"
     }
   };
   var lang = 'de';
