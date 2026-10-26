@@ -1,5 +1,5 @@
 /* Spielkiste offline: every file of the app cached on install, served from the cache, refreshed from the network. */
-var VERSION = '938e8c01ac6c';
+var VERSION = '31057b97507a';
 var FILES = ['./', 'css/style.css','icon.png','index.html','js/core.js','js/games/backgammon.js','js/games/battleship.js','js/games/blackjack.js','js/games/checkers.js','js/games/connect4.js','js/games/domino.js','js/games/dots.js','js/games/halma.js','js/games/kniffel.js','js/games/ludo.js','js/games/mastermind.js','js/games/maumau.js','js/games/memory.js','js/games/morris.js','js/games/reversi.js','js/games/schwarzerpeter.js','js/games/snakes.js','js/games/tictactoe.js','js/i18n.js','js/net.js','js/pwa.js','manifest.webmanifest'];
 self.addEventListener('install', function (e) { e.waitUntil(caches.open('sk-' + VERSION).then(function (c) { return c.addAll(FILES); }).then(function () { return self.skipWaiting(); })); });
 self.addEventListener('activate', function (e) { e.waitUntil(caches.keys().then(function (keys) { return Promise.all(keys.filter(function (k) { return k !== 'sk-' + VERSION; }).map(function (k) { return caches.delete(k); })); }).then(function () { return self.clients.claim(); })); });
