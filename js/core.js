@@ -183,7 +183,7 @@
   }
   function pasteBox(label, onCode) {
     var wrap = h('div', 'codebox'); wrap.appendChild(h('div', 'label', label));
-    var ta = h('textarea'); ta.rows = 3; ta.placeholder = 'SK1.'; wrap.appendChild(ta);
+    var ta = h('textarea'); ta.rows = 3; ta.placeholder = 'ABCD EFGH ...'; ta.autocapitalize = 'characters'; ta.spellcheck = false; wrap.appendChild(ta);
     var row = h('div', 'row');
     if (navigator.clipboard && navigator.clipboard.readText) { var pb = h('button', 'btn small', t('paste')); pb.onclick = function () { navigator.clipboard.readText().then(function (v) { ta.value = v; }, function () { ta.focus(); }); }; row.appendChild(pb); }
     var go = h('button', 'btn small primary', t('connect')); go.onclick = function () { var v = ta.value.trim(); if (!v) { ta.focus(); return; } go.disabled = true; onCode(v).then(function () { go.disabled = false; }, function () { go.disabled = false; toast(t('codeBad')); }); };
