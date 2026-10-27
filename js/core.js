@@ -64,7 +64,7 @@
   function header(backFn, title) {
     var head = h('header', 'top');
     if (backFn) { var b = h('button', 'btn ghost back', '‹ ' + t('back')); b.onclick = backFn; head.appendChild(b); }
-    var brand = h('div', 'brand'); brand.innerHTML = '<span class="logo">' + root.Icons.get('dice', 26) + '</span><span>' + esc(title || t('title')) + '</span>'; head.appendChild(brand);
+    var brand = h('div', 'brand'); brand.innerHTML = '<span class="logo">' + root.Icons.get('dice', 30) + '</span><span>' + esc(title || t('title')) + '</span>'; head.appendChild(brand);
     var right = h('div', 'right');
     var lang = h('button', 'btn ghost', root.I18N.lang === 'de' ? 'EN' : 'DE'); lang.title = t('lang'); lang.onclick = function () { root.I18N.set(root.I18N.lang === 'de' ? 'en' : 'de'); if (current) current(); };
     var snd = h('button', 'btn ghost'); snd.innerHTML = root.Icons.get(settings.sound ? 'sound' : 'mute', 18); snd.title = t('sound'); snd.onclick = function () { settings.sound = !settings.sound; store.set('settings', settings); snd.innerHTML = root.Icons.get(settings.sound ? 'sound' : 'mute', 18); };
@@ -100,7 +100,7 @@
       list.forEach(function (G) {
         var card = h('button', 'card');
         var st = stats[G.id] || { played: 0, won: 0 };
-        card.innerHTML = '<span class="icon">' + root.Icons.get(G.id, 38) + '</span><b>' + esc(root.I18N.name(G.name)) + '</b><span class="blurb">' + esc(root.I18N.name(G.blurb)) + '</span><span class="meta">' + esc(countText(G)) + (st.played ? ' · ' + st.won + '/' + st.played + ' ' + t('won') : '') + '</span>';
+        card.innerHTML = '<span class="icon">' + root.Icons.get(G.id, 52) + '</span><b>' + esc(root.I18N.name(G.name)) + '</b><span class="blurb">' + esc(root.I18N.name(G.blurb)) + '</span><span class="meta">' + esc(countText(G)) + (st.played ? ' · ' + st.won + '/' + st.played + ' ' + t('won') : '') + '</span>';
         card.onclick = function () { setup(G); };
         grid.appendChild(card);
       });
