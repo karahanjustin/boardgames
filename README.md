@@ -1,4 +1,4 @@
-# Spielkiste
+# Boardgames
 
 Die Klassiker im Browser, auf Deutsch und Englisch: Mensch ärgere Dich nicht, Schiffe versenken, Dame, Mühle, Vier gewinnt, Backgammon, Halma, Kniffel, Mau-Mau und mehr. Jedes Spiel gegen den Computer, am selben Gerät oder über das Netz mit bis zu sechs Spielern, ohne Server: die Geräte verbinden sich direkt (WebRTC), der Gastgeber führt das Spiel.
 

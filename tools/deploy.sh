@@ -1,5 +1,5 @@
 #!/bin/sh
-# Publishes Spielkiste: writes the file list and a version into sw.js, commits, pushes to GitHub (Pages serves main).
+# Publishes Boardgames: writes the file list and a version into sw.js, commits, pushes to GitHub (Pages serves main).
 # Run: sh tools/deploy.sh "what changed"
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

@@ -1,4 +1,4 @@
-# Spielkiste: the game contract
+# Boardgames: the game contract
 
 Every game is one file, `js/games/<id>.js`, plus its tests in `tools/tests/<id>.js`. The hub, the lobby, the
 networking, the AI turn loop and the match screen are shared (`js/core.js`); a game only knows its own rules and how

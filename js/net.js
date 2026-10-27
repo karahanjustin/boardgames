@@ -1,4 +1,4 @@
-/* Spielkiste: the direct connection between the players' devices, without a server. WebRTC data channels; the
+/* Boardgames: the direct connection between the players' devices, without a server. WebRTC data channels; the
    codes the players pass each other (by message, by hand) carry the connection offer and answer, compressed. The
    host makes one invite code per guest, the guest answers with one code back, and the two are connected. Only a
    public STUN address is used to find the way through routers; nothing of the game ever touches a server.

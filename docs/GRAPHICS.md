@@ -1,4 +1,4 @@
-# Spielkiste: the graphics of the games
+# Boardgames: the graphics of the games
 
 The games must look like the real things on a table: wooden boards, turned pieces, cone figures, glass marbles,
 proper playing cards, ivory dominoes, dice with pips, not coloured dots on flat rectangles. `js/gfx.js` is the shared
@@ -44,7 +44,7 @@ The player colours come in `info.colors`; always draw a player's pieces with `in
 Screenshots with headless Chrome against a local server of your own (pick a free port, kill it when done):
 
 ```
-cd /Users/justin/Desktop/CC-Projects/Games/Spielkiste
+cd /Users/justin/Desktop/CC-Projects/Games/Boardgames
 python3 -m http.server 5131 --bind 127.0.0.1 >/dev/null 2>&1 &
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu --hide-scrollbars \
   --no-first-run --user-data-dir="$(mktemp -d)" --window-size=1280,900 --virtual-time-budget=6000 \

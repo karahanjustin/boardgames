@@ -1,4 +1,4 @@
-/* Spielkiste: the shell. The hub with every game, the setup of a match (against the computer, on one device,
+/* Boardgames: the shell. The hub with every game, the setup of a match (against the computer, on one device,
    hosting a table over a direct connection, joining one), the lobby with the invite codes, and the match itself:
    the host holds the state, runs the rules and the computer players, and sends every player his view. Games
    register themselves with Games.register (docs/CONTRACT.md). */
@@ -219,7 +219,7 @@
     return box;
   }
   // the answer link opened in another window hands its code to the waiting host window
-  var channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('spielkiste') : null;
+  var channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('boardgames') : null;
   function lobbyHost(G, count, level, myName, autoInvite) {
     if (net) net.close();
     net = root.Net.host();
