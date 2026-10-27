@@ -59,6 +59,7 @@
 
   /* ---------- screens ---------- */
   var app = $('#app'), current = null;
+  if (root.Gfx) { var gfxStyle = document.createElement('style'); gfxStyle.textContent = root.Gfx.css(); document.head.appendChild(gfxStyle); }
   function show(el) { app.innerHTML = ''; app.appendChild(el); window.scrollTo(0, 0); }
   function header(backFn, title) {
     var head = h('header', 'top');
@@ -542,6 +543,20 @@
       if (G.counts.indexOf(n) < 0) n = G.counts[0];
       for (var i = 0; i < n; i++) ps.push(i === 0 ? { name: settings.name || t('you'), kind: 'local' } : { name: t('ai') + ' ' + i, kind: 'ai', level: settings.level || 2 });
       startMatch(G, ps, { host: true });
+      // demo=n: n random moves of the local player (the computers answer at once) before the first frame, for screenshots
+      var demo = +((/[?&]demo=(\d+)/.exec(location.search) || [])[1]) || 0;
+      if (demo && match) {
+        root.App.fast = true;
+        var legal = function (st, p, a) { return G.validate ? G.validate(st, p, a) : (G.actions(st, p) || []).some(function (x) { return deepEq(x, a); }); };
+        for (var d = 0, guard = 0; d < demo && guard < demo * 20 && match && !match.over; guard++) {
+          if (!match.info || !match.info.canAct) { if (match.G.current(match.state) < 0 && !(match.G.canAct && match.G.canAct(match.state, 0))) break; continue; }
+          var acts = G.actions(match.state, 0) || [];
+          if (!acts.length) acts = [{ auto: true }, { roll: true }, { pass: true }, { draw: true }].filter(function (a) { return legal(match.state, 0, a); });
+          if (!acts.length) break;
+          match.localAct(acts[Math.floor(Math.random() * acts.length)]); d++;
+        }
+        root.App.fast = false;
+      }
     } else if (G) setup(G); else hub();
   });
 })(typeof self !== 'undefined' ? self : this);
