@@ -211,24 +211,108 @@
     },
     ui: {
       mount: function (el, api) {
+        var Gfx = root.Gfx;
         var wrap = document.createElement('div'); wrap.className = 'ck-wrap';
         var bar = document.createElement('div'); bar.className = 'ck-bar';
+        var frame = document.createElement('div'); frame.className = 'ck-frame';
+        var files = document.createElement('div'); files.className = 'ck-files';
+        var ranks = document.createElement('div'); ranks.className = 'ck-ranks';
         var board = document.createElement('div'); board.className = 'ck-board';
+        var layer = document.createElement('div'); layer.className = 'ck-layer';
         var hint = document.createElement('div'); hint.className = 'ck-hint';
-        wrap.appendChild(bar); wrap.appendChild(board); wrap.appendChild(hint); el.appendChild(wrap);
+        frame.appendChild(files); frame.appendChild(ranks); frame.appendChild(board); board.appendChild(layer);
+        wrap.appendChild(bar); wrap.appendChild(frame); wrap.appendChild(hint); el.appendChild(wrap);
         var sq = [], view = null, info = null, acts = [], sel = -1, partial = [], flipped = false, seenMoves = -1, k;
+        var pieceAt = [], timers = [], animating = false;
         for (k = 0; k < CELLS; k++) {
           var d = document.createElement('div');
           d.className = 'ck-sq ' + (playable(k) ? 'dark' : 'light'); d.dataset.i = k; d.onclick = onTap; sq.push(d);
         }
+        /* The display row and column of a square, respecting the flip. */
+        function disp(i) {
+          var r = i >> 3, c = i & 7;
+          return flipped ? [r, SIZE - 1 - c] : [SIZE - 1 - r, c];
+        }
         function layout() {
-          board.innerHTML = '';
-          for (var r = 0; r < SIZE; r++) for (var c = 0; c < SIZE; c++) {
-            var rr = flipped ? r : SIZE - 1 - r, cc = flipped ? SIZE - 1 - c : c;
-            board.appendChild(sq[rr * SIZE + cc]);
+          var r, c, rr, cc, i;
+          for (i = board.children.length - 1; i >= 0; i--) if (board.children[i] !== layer) board.removeChild(board.children[i]);
+          for (r = 0; r < SIZE; r++) for (c = 0; c < SIZE; c++) {
+            rr = flipped ? r : SIZE - 1 - r; cc = flipped ? SIZE - 1 - c : c;
+            board.insertBefore(sq[rr * SIZE + cc], layer);
           }
+          files.innerHTML = ''; ranks.innerHTML = '';
+          for (c = 0; c < SIZE; c++) { var f = document.createElement('span'); f.textContent = String.fromCharCode(97 + (flipped ? SIZE - 1 - c : c)); files.appendChild(f); }
+          for (r = 0; r < SIZE; r++) { var n = document.createElement('span'); n.textContent = String(flipped ? r + 1 : SIZE - r); ranks.appendChild(n); }
+          for (i = 0; i < CELLS; i++) if (pieceAt[i]) place(pieceAt[i], i);
+        }
+        function place(elm, i) { var d = disp(i); elm.style.transform = 'translate(' + (d[1] * 100) + '%,' + (d[0] * 100) + '%)'; }
+        function makePiece(v, i) {
+          var p = document.createElement('div'); p.className = 'ck-piece';
+          var lift = document.createElement('div'); lift.className = 'ck-lift'; p.appendChild(lift);
+          setFace(p, v); place(p, i); layer.appendChild(p);
+          return p;
+        }
+        function setFace(p, v) {
+          if (p.dataset.v === String(v)) return;
+          p.dataset.v = v;
+          p.firstChild.innerHTML = Gfx.disc(info.colors[owner(v)], 40, { king: isKing(v), kingColor: '#f6dc7a' });
         }
         layout();
+        /* Puts the piece elements in line with the view: new ones appear, missing ones vanish, faces update. */
+        function sync() {
+          var i, v;
+          for (i = 0; i < CELLS; i++) {
+            v = view.cells[i];
+            if (!v && pieceAt[i]) { layer.removeChild(pieceAt[i]); pieceAt[i] = null; }
+            else if (v && !pieceAt[i]) pieceAt[i] = makePiece(v, i);
+            else if (v) { setFace(pieceAt[i], v); place(pieceAt[i], i); }
+          }
+        }
+        var inflight = null, loose = [];
+        /* Ends a running animation at once: the mover lands on its target square, popped men are gone. */
+        function stopAnim() {
+          timers.forEach(clearTimeout); timers = []; animating = false;
+          if (inflight) {
+            inflight.mover.classList.remove('moving'); inflight.mover.style.zIndex = '';
+            if (!pieceAt[inflight.to]) pieceAt[inflight.to] = inflight.mover; else loose.push(inflight.mover);
+            inflight = null;
+          }
+          loose.forEach(function (x) { if (x.parentNode) x.parentNode.removeChild(x); }); loose = [];
+        }
+        function later(f, ms) { timers.push(setTimeout(f, ms)); }
+        /* A move slides the piece along its path, hop by hop; the men it jumps pop away as it passes them. */
+        function animateMove(ev, caps) {
+          var mover = pieceAt[ev.from], path = ev.path, step = path.length > 2 ? 230 : 260, kk, a, b, dr, dc, r, c, j, hops = [];
+          if (!mover) { sync(); return; }
+          pieceAt[ev.from] = null; inflight = { mover: mover, to: ev.to };
+          for (kk = 1; kk < path.length; kk++) {
+            a = path[kk - 1]; b = path[kk]; hops.push([]);
+            dr = (b >> 3) > (a >> 3) ? 1 : -1; dc = (b & 7) > (a & 7) ? 1 : -1;
+            r = (a >> 3) + dr; c = (a & 7) + dc;
+            while (r !== (b >> 3)) { j = r * SIZE + c; if (caps.indexOf(j) >= 0) hops[kk - 1].push(j); r += dr; c += dc; }
+          }
+          animating = true;
+          mover.classList.add('moving'); mover.style.zIndex = 5;
+          hops.forEach(function (taken, idx) {
+            later(function () {
+              place(mover, path[idx + 1]);
+              taken.forEach(function (j) {
+                var victim = pieceAt[j];
+                if (!victim) return;
+                pieceAt[j] = null; loose.push(victim);
+                later(function () { victim.classList.add('pop'); }, step * 0.55);
+                later(function () { if (victim.parentNode) victim.parentNode.removeChild(victim); }, step * 0.55 + 320);
+              });
+            }, idx * step);
+          });
+          later(function () {
+            mover.classList.remove('moving'); mover.style.zIndex = '';
+            pieceAt[ev.to] = mover; inflight = null;
+            loose.forEach(function (x) { if (x.parentNode) x.parentNode.removeChild(x); }); loose = [];
+            animating = false;
+            sync(); paint();
+          }, hops.length * step + 240);
+        }
         function candidates() {
           return acts.filter(function (a) {
             if (a.from !== sel) return false;
@@ -237,7 +321,7 @@
           });
         }
         function onTap(ev) {
-          if (!info || !info.canAct || !view) return;
+          if (!info || !info.canAct || !view || animating) return;
           var i = +ev.currentTarget.dataset.i, v = view.cells[i], step, cand;
           if (owner(v) === info.me && partial.length === 0) {
             if (acts.some(function (a) { return a.from === i; })) { sel = i; }
@@ -255,24 +339,28 @@
         function isCapture(a) { return Math.abs((a.path[1] >> 3) - (a.path[0] >> 3)) > 1; }
         function paint() {
           if (!view || !info) return;
-          var ov = G.over(view), cand = sel >= 0 ? candidates() : [], step = partial.length + 1, targets = {}, movers = {}, i, v, d, counts = [0, 0];
+          var ov = G.over(view), cand = sel >= 0 ? candidates() : [], step = partial.length + 1, targets = {}, movers = {}, i, v, d, counts = [0, 0], p;
           cand.forEach(function (a) { targets[a.path[step]] = true; });
-          if (info.canAct && sel < 0) acts.forEach(function (a) { movers[a.from] = true; });
+          if (info.canAct && sel < 0 && !animating) acts.forEach(function (a) { movers[a.from] = true; });
           for (i = 0; i < CELLS; i++) {
             v = view.cells[i]; d = sq[i];
             if (v) counts[owner(v)]++;
-            d.innerHTML = v ? '<i class="ck-man' + (isKing(v) ? ' king' : '') + '" style="--pc:' + info.colors[owner(v)] + '"></i>' : '';
             d.classList.toggle('sel', i === sel);
             d.classList.toggle('tgt', !!targets[i]);
-            d.classList.toggle('mover', !!movers[i]);
-            d.classList.toggle('last', !!view.last && view.last.indexOf(i) >= 0);
+            d.classList.toggle('last', !!view.last && view.last.indexOf(i) >= 0 && !animating);
+            p = pieceAt[i];
+            if (p) {
+              p.classList.toggle('sel', i === sel);
+              p.classList.toggle('mover', !!movers[i]);
+            }
           }
           bar.innerHTML = '';
           for (i = 0; i < 2; i++) {
             var side = document.createElement('div'); side.className = 'ck-side' + (!ov && view.turn === i ? ' on' : '');
-            var disc = document.createElement('i'); disc.className = 'ck-man small'; disc.style.setProperty('--pc', info.colors[i]);
-            var txt = document.createElement('span'); txt.textContent = info.names[i] + ': ' + counts[i];
-            side.appendChild(disc); side.appendChild(txt); bar.appendChild(side);
+            var disc = document.createElement('i'); disc.className = 'ck-icon'; disc.innerHTML = Gfx.disc(info.colors[i], 26);
+            var txt = document.createElement('span'); txt.textContent = info.names[i];
+            var num = document.createElement('b'); num.textContent = counts[i];
+            side.appendChild(disc); side.appendChild(txt); side.appendChild(num); bar.appendChild(side);
           }
           board.style.cursor = info.canAct ? 'pointer' : 'default';
           if (ov) hint.textContent = ov.winner < 0 ? api.t('drawn') : api.t('won', info.names[ov.winner]);
@@ -283,33 +371,49 @@
         }
         var style = document.createElement('style');
         style.textContent = '.ck-wrap{max-width:min(100%,560px);margin:0 auto}' +
-          '.ck-board{display:grid;grid-template-columns:repeat(8,1fr);aspect-ratio:1;border:14px solid #5a3a1e;border-radius:8px;background:repeating-linear-gradient(90deg,#6b4423 0 6px,#5a3a1e 6px 14px);box-shadow:inset 0 0 0 2px #3b2411,0 10px 28px rgba(0,0,0,.4);user-select:none}' +
+          '.ck-frame{position:relative;padding:clamp(18px,4.5%,28px);border-radius:6px;background-color:#5a3418;background-image:' + Gfx.noise(21, '#5a3418', '0.02 0.9', 3) + ';box-shadow:0 14px 34px rgba(0,0,0,.5),inset 0 2px 0 rgba(255,255,255,.14),inset 0 -2px 0 rgba(0,0,0,.4),inset 0 0 0 1px rgba(0,0,0,.3);user-select:none}' +
+          '.ck-files,.ck-ranks{position:absolute;display:grid;color:#e8c892;opacity:.8;font:600 clamp(9px,2.2vw,12px)/1 Georgia,serif;letter-spacing:.04em;pointer-events:none}' +
+          '.ck-files{left:clamp(18px,4.5%,28px);right:clamp(18px,4.5%,28px);bottom:0;height:clamp(18px,4.5%,28px);grid-template-columns:repeat(8,1fr);align-items:center;text-align:center}' +
+          '.ck-ranks{top:clamp(18px,4.5%,28px);bottom:clamp(18px,4.5%,28px);left:0;width:clamp(18px,4.5%,28px);grid-template-rows:repeat(8,1fr);align-items:center;text-align:center}' +
+          '.ck-board{position:relative;display:grid;grid-template-columns:repeat(8,1fr);aspect-ratio:1;box-shadow:inset 0 0 0 2px #2a1708,inset 0 3px 6px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.08)}' +
           '.ck-sq{position:relative;aspect-ratio:1}' +
-          '.ck-sq.light{background:linear-gradient(135deg,#eed7a9,#d8b980)}' +
-          '.ck-sq.dark{background:linear-gradient(135deg,#8c5a2b,#6a4120)}' +
-          '.ck-sq.last{box-shadow:inset 0 0 0 100px rgba(255,235,150,.18)}' +
-          '.ck-sq.mover{box-shadow:inset 0 0 0 2px rgba(255,255,255,.45)}' +
-          '.ck-sq.sel{box-shadow:inset 0 0 0 3px #ffd54a}' +
-          '.ck-sq.tgt::after{content:"";position:absolute;inset:36%;border-radius:50%;background:rgba(255,215,80,.9);box-shadow:0 0 8px rgba(255,215,80,.8)}' +
-          '.ck-man{position:absolute;inset:11%;border-radius:50%;background:var(--pc);box-shadow:inset -3px -5px 0 rgba(0,0,0,.3),inset 3px 4px 0 rgba(255,255,255,.3),0 3px 4px rgba(0,0,0,.45)}' +
-          '.ck-man.king::after{content:"\\2655";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:min(5vw,26px);color:rgba(255,255,255,.95);text-shadow:0 1px 2px rgba(0,0,0,.8)}' +
+          '.ck-sq.light{background-color:#e3c48f;background-image:' + Gfx.noise(4, '#e3c48f', '0.03 0.8', 3) + ';box-shadow:inset 0 0 0 1px rgba(90,52,24,.18)}' +
+          '.ck-sq.dark{background-color:#8a5a2f;background-image:' + Gfx.noise(8, '#8a5a2f', '0.03 0.8', 3) + ';box-shadow:inset 0 0 0 1px rgba(0,0,0,.22),inset 0 0 10px rgba(0,0,0,.15)}' +
+          '.ck-sq.last::before{content:"";position:absolute;inset:0;background:rgba(255,225,140,.22)}' +
+          '.ck-sq.sel::before{content:"";position:absolute;inset:0;background:rgba(255,215,90,.3);box-shadow:inset 0 0 0 2px rgba(255,215,90,.8)}' +
+          '.ck-sq.tgt::after{content:"";position:absolute;inset:22%;border-radius:50%;box-shadow:0 0 0 3px rgba(255,222,120,.85),0 0 10px 4px rgba(255,200,80,.45),inset 0 0 8px rgba(255,220,120,.5);animation:ckring 1.2s ease-in-out infinite}' +
+          '@keyframes ckring{50%{transform:scale(.92);opacity:.75}}' +
+          '.ck-layer{position:absolute;inset:0;pointer-events:none;z-index:2}' +
+          '.ck-piece{position:absolute;left:0;top:0;width:12.5%;height:12.5%;transition:transform .24s cubic-bezier(.3,.7,.3,1);will-change:transform}' +
+          '.ck-lift{position:absolute;inset:7% 8% 4% 8%;display:flex;align-items:flex-end;transition:transform .16s ease,filter .16s ease}' +
+          '.ck-lift svg{width:100%;height:auto;overflow:visible}' +
+          '.ck-piece.mover .ck-lift{filter:drop-shadow(0 0 5px rgba(255,236,160,.95)) drop-shadow(0 0 2px rgba(255,236,160,.9))}' +
+          '.ck-piece.sel .ck-lift{transform:translateY(-12%) scale(1.1);filter:drop-shadow(0 8px 6px rgba(0,0,0,.5)) drop-shadow(0 0 6px rgba(255,236,160,.9))}' +
+          '.ck-piece.moving .ck-lift{transform:translateY(-10%) scale(1.08);filter:drop-shadow(0 10px 8px rgba(0,0,0,.5))}' +
+          '.ck-piece.pop .ck-lift{animation:ckpop .32s ease-out forwards}' +
+          '@keyframes ckpop{40%{transform:translateY(-20%) scale(1.25);opacity:1}100%{transform:translateY(-40%) scale(.4);opacity:0}}' +
           '.ck-bar{display:flex;justify-content:space-between;gap:12px;margin:0 0 10px;font-size:15px}' +
-          '.ck-side{display:flex;align-items:center;gap:8px;padding:4px 10px;border-radius:999px;opacity:.6}' +
+          '.ck-side{display:flex;align-items:center;gap:8px;min-height:40px;padding:4px 12px;border-radius:999px;opacity:.6}' +
           '.ck-side.on{opacity:1;background:rgba(255,255,255,.1);box-shadow:0 0 0 1px rgba(255,255,255,.25)}' +
-          '.ck-man.small{position:static;display:inline-block;width:18px;height:18px}' +
-          '.ck-hint{text-align:center;margin-top:10px;font-size:14px;opacity:.85;min-height:18px}';
+          '.ck-side b{font-size:17px;min-width:22px;text-align:right}' +
+          '.ck-icon{display:inline-flex;width:26px}.ck-icon svg{width:26px;height:auto;overflow:visible}' +
+          '.ck-hint{text-align:center;margin-top:12px;font-size:14px;opacity:.85;min-height:18px}';
         el.appendChild(style);
         return {
           update: function (v, inf) {
+            var prev = view, fast = root.App && root.App.fast, mv = null, caps = [];
+            stopAnim();
             view = v; info = inf;
             if (v.moves !== seenMoves) { sel = -1; partial = []; seenMoves = v.moves; }
             acts = inf.canAct ? G.actions(v, inf.me) : [];
             var others = inf.players && inf.players[0] ? (inf.players[0].ai || inf.players[0].remote) : false;
             var flip = inf.me === 1 && !!others;
             if (flip !== flipped) { flipped = flip; layout(); }
-            paint();
+            (inf.events || []).forEach(function (e) { if (e.e === 'move') mv = e; else if (e.e === 'capture') caps = e.at; });
+            if (mv && prev && !fast && pieceAt[mv.from]) { paint(); animateMove(mv, caps); return; }
+            sync(); paint();
           },
-          destroy: function () { el.innerHTML = ''; }
+          destroy: function () { stopAnim(); el.innerHTML = ''; }
         };
       }
     }

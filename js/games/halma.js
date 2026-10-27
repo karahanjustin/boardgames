@@ -165,23 +165,35 @@
     },
     ui: {
       mount: function (el, api) {
+        var Gfx = root.Gfx;
         var wrap = document.createElement('div'); wrap.className = 'hm';
-        var canvas = document.createElement('canvas'); canvas.className = 'hm-canvas';
+        var board = document.createElement('div'); board.className = 'hm-board gfx-wood';
+        var base = document.createElement('canvas'); base.className = 'hm-canvas';
+        var over = document.createElement('canvas'); over.className = 'hm-canvas';
         var hint = document.createElement('div'); hint.className = 'hm-hint';
-        var btn = document.createElement('button'); btn.className = 'hm-btn'; btn.textContent = api.t('pass'); btn.style.display = 'none';
-        wrap.appendChild(canvas); wrap.appendChild(btn); wrap.appendChild(hint); el.appendChild(wrap);
+        var btn = document.createElement('button'); btn.className = 'hm-btn'; btn.type = 'button'; btn.textContent = api.t('pass'); btn.style.display = 'none';
+        board.appendChild(base); board.appendChild(over);
+        wrap.appendChild(board); wrap.appendChild(btn); wrap.appendChild(hint); el.appendChild(wrap);
         var style = document.createElement('style');
         style.textContent = '.hm{display:flex;flex-direction:column;align-items:center;gap:10px}' +
-          '.hm-canvas{display:block;border-radius:14px;background:#1d2a44;box-shadow:0 8px 24px rgba(0,0,0,.35);touch-action:manipulation}' +
+          '.hm{width:100%;min-width:0}.hm-board{position:relative;width:min(100%,612px);aspect-ratio:100/113;border:6px solid #5a3a20;border-image:linear-gradient(135deg,#8a5a36,#4e2d16 40%,#6b3f20 60%,#3a2010) 1;border-radius:3px;box-shadow:0 12px 30px rgba(0,0,0,.5),inset 0 0 40px rgba(0,0,0,.25);touch-action:manipulation;cursor:pointer}' +
+          '.hm-canvas{position:absolute;left:0;top:0;display:block}' +
+          '.hm-marble{position:absolute;pointer-events:none;transition:left .16s ease-in-out,top .16s ease-in-out,transform .18s ease;z-index:2;isolation:isolate}' +
+          '.hm-marble svg{width:100%;height:100%;display:block;overflow:visible}' +
+          '.hm-marble.hm-sel{z-index:6;transform:translateY(-22%) scale(1.12)}' +
+          '.hm-marble.hm-sel:before{content:"";position:absolute;left:5%;width:90%;top:70%;height:36%;border-radius:50%;z-index:-1;background:radial-gradient(ellipse at center,rgba(0,0,0,.5),rgba(0,0,0,.25) 50%,transparent 72%)}' +
+          '.hm-marble.hm-hop{z-index:8;animation:hmHop var(--hop,160ms) ease-in-out}' +
+          '@keyframes hmHop{0%{transform:translateY(0) scale(1)}50%{transform:translateY(-45%) scale(1.22)}100%{transform:translateY(0) scale(1)}}' +
           '.hm-hint{text-align:center;font-size:14px;opacity:.85;min-height:1.4em}' +
-          '.hm-btn{padding:10px 22px;border-radius:999px;border:0;font-size:16px;font-weight:600;cursor:pointer;background:#2456c8;color:#fff}';
+          '.hm-btn{min-height:44px;padding:0 26px;border-radius:999px;border:0;font-size:16px;font-weight:700;cursor:pointer;background:#2456c8;color:#fff;box-shadow:0 3px 8px rgba(0,0,0,.35)}';
         el.appendChild(style);
-        var view = null, info = null, sel = -1, acts = [], geom = null, ro = null;
+        var view = null, info = null, sel = -1, acts = [], geom = null, ro = null, marbleAt = {}, timers = [], busyUntil = {};
         function layout() {
-          var W = Math.min(el.clientWidth || 360, 600), H = Math.round(W * 1.13), dpr = window.devicePixelRatio || 1;
-          canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
-          canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+          /* The board is sized by CSS (full width up to 600 px, aspect 1 to 1.13); the canvases follow its content box. */
+          var W = board.clientWidth || 348, H = board.clientHeight || Math.round(W * 1.13), dpr = window.devicePixelRatio || 1;
+          [base, over].forEach(function (c) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); c.style.width = W + 'px'; c.style.height = H + 'px'; });
           geom = { W: W, H: H, dpr: dpr, s: W / 23.4, cx: W / 2, cy: H / 2 };
+          geom.D = Math.sqrt(3) * geom.s;
         }
         function pt(i) { var c = CELLS[i]; return { x: geom.cx + Math.sqrt(3) * geom.s * (c[0] + c[2] / 2), y: geom.cy + 1.5 * geom.s * c[2] }; }
         function hexToRgba(hex, a) {
@@ -189,60 +201,148 @@
           return m ? 'rgba(' + parseInt(m[1], 16) + ',' + parseInt(m[2], 16) + ',' + parseInt(m[3], 16) + ',' + a + ')' : hex;
         }
         function circle(ctx, q, r) { ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, Math.PI * 2); }
-        function draw() {
+        /* The star outline: the six tips and the six inner corners, scaled a little beyond the outer holes. */
+        function starPath(ctx, grow) {
+          var k, tips = [], c = { x: geom.cx, y: geom.cy }, v, w, f;
+          for (k = 0; k < 6; k++) tips.push(pt(CORNERS[k].tip));
+          f = 1 + grow * geom.D / Math.sqrt(Math.pow(tips[0].x - c.x, 2) + Math.pow(tips[0].y - c.y, 2));
+          ctx.beginPath();
+          for (k = 0; k < 6; k++) {
+            v = tips[k]; w = tips[(k + 1) % 6];
+            if (k === 0) ctx.moveTo(c.x + (v.x - c.x) * f, c.y + (v.y - c.y) * f); else ctx.lineTo(c.x + (v.x - c.x) * f, c.y + (v.y - c.y) * f);
+            ctx.lineTo(c.x + ((v.x - c.x) + (w.x - c.x)) / 3 * f, c.y + ((v.y - c.y) + (w.y - c.y)) / 3 * f);
+          }
+          ctx.closePath();
+        }
+        /* The board itself, drawn once per layout: the star carved a shade darker with a soft inner shadow, the
+           holes as dimples with a dark upper rim and a light lower rim, and painted rings on the corner holes in
+           the players' colours. */
+        function drawBase() {
           if (!geom || !view) return;
-          var ctx = canvas.getContext('2d'), v = view, inf = info, D = Math.sqrt(3) * geom.s, i, q, p, ov = G.over(v);
-          var homeOf = [], targetOf6 = [];
-          for (p = 0; p < v.n; p++) { homeOf[v.seats[p]] = p; targetOf6[targetOf(v.seats[p])] = p; }
+          var ctx = base.getContext('2d'), D = geom.D, i, q, r = D * 0.23, corner, homeOf = [], tgt6 = [], p, g, col;
+          for (p = 0; p < view.n; p++) { homeOf[view.seats[p]] = p; tgt6[targetOf(view.seats[p])] = p; }
           ctx.setTransform(geom.dpr, 0, 0, geom.dpr, 0, 0);
           ctx.clearRect(0, 0, geom.W, geom.H);
-          var reach = sel >= 0 ? acts.filter(function (a) { return a.from === sel; }).map(function (a) { return a.to; }) : [];
+          ctx.save(); starPath(ctx, 0.95); ctx.fillStyle = 'rgba(40,20,8,.28)'; ctx.fill();
+          ctx.clip(); ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = D * 0.5; ctx.shadowOffsetY = D * 0.12; ctx.lineWidth = D * 0.3; ctx.strokeStyle = 'rgba(0,0,0,.5)'; starPath(ctx, 1.08); ctx.stroke(); ctx.restore();
+          ctx.save(); starPath(ctx, 0.95); ctx.strokeStyle = 'rgba(255,220,170,.22)'; ctx.lineWidth = 1; ctx.stroke(); ctx.restore();
           for (i = 0; i < N; i++) {
-            q = pt(i);
-            var corner = CORNER_OF[i], fill = 'rgba(255,255,255,.14)';
-            if (corner >= 0 && homeOf[corner] !== undefined) fill = hexToRgba(inf.colors[homeOf[corner]], 0.38);
-            else if (corner >= 0 && targetOf6[corner] !== undefined) fill = hexToRgba(inf.colors[targetOf6[corner]], 0.2);
-            else if (corner >= 0) fill = 'rgba(255,255,255,.07)';
-            ctx.fillStyle = fill; circle(ctx, q, D * 0.26); ctx.fill();
-            if (v.last && (v.last.from === i)) { ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2; circle(ctx, q, D * 0.26); ctx.stroke(); }
+            q = pt(i); corner = CORNER_OF[i]; col = null;
+            if (corner >= 0 && homeOf[corner] !== undefined) col = hexToRgba(info.colors[homeOf[corner]], 0.75);
+            else if (corner >= 0 && tgt6[corner] !== undefined) col = hexToRgba(info.colors[tgt6[corner]], 0.3);
+            if (col) { ctx.strokeStyle = col; ctx.lineWidth = D * 0.07; circle(ctx, q, r * 1.45); ctx.stroke(); }
+            g = ctx.createRadialGradient(q.x, q.y + r * 0.45, r * 0.1, q.x, q.y + r * 0.2, r * 1.15);
+            g.addColorStop(0, '#4a2e16'); g.addColorStop(0.7, '#2a180a'); g.addColorStop(1, '#140a03');
+            ctx.fillStyle = g; circle(ctx, q, r); ctx.fill();
+            ctx.strokeStyle = 'rgba(255,230,190,.28)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(q.x, q.y, r, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke();
+            ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(q.x, q.y, r - 0.3, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
           }
-          for (i = 0; i < N; i++) {
-            p = v.board[i];
-            if (p < 0) continue;
-            q = pt(i);
-            ctx.fillStyle = 'rgba(0,0,0,.35)'; circle(ctx, { x: q.x + D * 0.04, y: q.y + D * 0.07 }, D * 0.38); ctx.fill();
-            ctx.fillStyle = inf.colors[p]; circle(ctx, q, D * 0.38); ctx.fill();
-            ctx.fillStyle = 'rgba(255,255,255,.3)'; circle(ctx, { x: q.x - D * 0.1, y: q.y - D * 0.12 }, D * 0.14); ctx.fill();
-            if (v.last && v.last.to === i) { ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 2; circle(ctx, q, D * 0.42); ctx.stroke(); }
-            if (i === sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; circle(ctx, q, D * 0.46); ctx.stroke(); }
+        }
+        /* The overlay: the last move, the pieces that may move, the holes a selected marble can reach, the turn. */
+        function drawOver() {
+          if (!geom || !view) return;
+          var ctx = over.getContext('2d'), D = geom.D, v = view, inf = info, ov = G.over(v), q;
+          ctx.setTransform(geom.dpr, 0, 0, geom.dpr, 0, 0);
+          ctx.clearRect(0, 0, geom.W, geom.H);
+          if (v.last) {
+            ctx.strokeStyle = 'rgba(255,240,200,.45)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+            circle(ctx, pt(v.last.from), D * 0.3); ctx.stroke(); ctx.setLineDash([]);
+            ctx.strokeStyle = 'rgba(255,240,200,.6)'; circle(ctx, pt(v.last.to), D * 0.46); ctx.stroke();
           }
           if (inf.canAct && !ov && sel < 0) {
-            /* The pieces that have a move get a soft ring so the player knows what to tap. */
-            ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1.5;
-            acts.forEach(function (a, k) { if (k === 0 || acts[k - 1].from !== a.from) { circle(ctx, pt(a.from), D * 0.44); ctx.stroke(); } });
+            ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 1.5; ctx.shadowColor = '#fff'; ctx.shadowBlur = 4;
+            acts.forEach(function (a, k) { if (k === 0 || acts[k - 1].from !== a.from) { circle(ctx, pt(a.from), D * 0.46); ctx.stroke(); } });
+            ctx.shadowBlur = 0;
           }
-          reach.forEach(function (to) {
-            q = pt(to);
-            ctx.fillStyle = hexToRgba(inf.colors[inf.me], 0.55); circle(ctx, q, D * 0.3); ctx.fill();
-            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; circle(ctx, q, D * 0.3); ctx.stroke();
-          });
-          /* The turn marker: a small disc in the corner of the board in the colour of the player to move. */
+          if (sel >= 0) {
+            ctx.shadowColor = inf.colors[inf.me]; ctx.shadowBlur = D * 0.35; ctx.lineWidth = D * 0.09; ctx.strokeStyle = hexToRgba(inf.colors[inf.me], 0.9);
+            acts.forEach(function (a) { if (a.from === sel) { q = pt(a.to); circle(ctx, q, D * 0.3); ctx.stroke(); } });
+            ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(255,255,255,.35)';
+            acts.forEach(function (a) { if (a.from === sel) { circle(ctx, pt(a.to), D * 0.3); ctx.fill(); } });
+          }
+          ctx.shadowBlur = 0;
           ctx.fillStyle = ov ? inf.colors[ov.winner] : inf.colors[v.turn];
-          circle(ctx, { x: geom.W - 18, y: 18 }, 9); ctx.fill();
+          circle(ctx, { x: geom.W - 16, y: 16 }, 7); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 1; ctx.stroke();
+        }
+        /* The marbles are DOM nodes over the canvas so they can slide and hop; each node sits on one hole. */
+        function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
+        function pending(key) { return (busyUntil[key] || 0) > Date.now(); }
+        function at(key, t, fn) { later(fn, Math.max(0, t - Date.now())); if (t > (busyUntil[key] || 0)) busyUntil[key] = t; }
+        function restart(node, cls) { node.classList.remove(cls); void node.offsetWidth; node.classList.add(cls); }
+        function placeMarble(node, i, instant) {
+          var q = pt(i), w = geom.D * 0.92;
+          if (instant) node.style.transition = 'none';
+          node.style.width = w + 'px'; node.style.height = w + 'px';
+          node.style.left = (q.x - w / 2) + 'px'; node.style.top = (q.y - w / 2) + 'px';
+          if (instant) { void node.offsetWidth; node.style.transition = ''; }
+        }
+        function makeMarble(p, i) {
+          var node = document.createElement('div'); node.className = 'hm-marble'; node.dataset.p = p;
+          node.innerHTML = Gfx.marble(info.colors[p], 40); board.appendChild(node); marbleAt[i] = node; placeMarble(node, i, true);
+          return node;
+        }
+        function rebuildMarbles() {
+          Object.keys(marbleAt).forEach(function (k) { if (marbleAt[k].parentNode) marbleAt[k].parentNode.removeChild(marbleAt[k]); });
+          marbleAt = {}; busyUntil = {};
+          for (var i = 0; i < N; i++) if (view.board[i] >= 0) makeMarble(view.board[i], i);
+        }
+        function consistent() {
+          for (var i = 0; i < N; i++) {
+            var m = marbleAt[i];
+            if (view.board[i] < 0 ? !!m : (!m || +m.dataset.p !== view.board[i])) return false;
+          }
+          return true;
+        }
+        /* The chain of jumps the piece took, found by a search over the board before the move; a single step is
+           just the two holes. */
+        function chain(boardBefore, from, to) {
+          if (DIST[from][to] === 1) return [from, to];
+          var b = boardBefore.slice(), parent = {}, queue = [from], i, d, nb, land, path;
+          b[from] = -1; parent[from] = -1;
+          while (queue.length) {
+            i = queue.shift();
+            if (i === to) break;
+            for (d = 0; d < 6; d++) {
+              nb = NEIGH[i][d];
+              if (nb < 0 || b[nb] < 0) continue;
+              land = NEIGH[nb][d];
+              if (land < 0 || b[land] >= 0 || parent[land] !== undefined) continue;
+              parent[land] = i; queue.push(land);
+            }
+          }
+          if (parent[to] === undefined) return [from, to];
+          path = [to]; while (path[0] !== from) path.unshift(parent[path[0]]);
+          return path;
+        }
+        function animateMove(e) {
+          var node = marbleAt[e.from], before = view.board.slice(), path, t0, per = 170, key;
+          if (!node) return false;
+          before[e.from] = e.p; before[e.to] = -1;
+          path = chain(before, e.from, e.to);
+          delete marbleAt[e.from]; marbleAt[e.to] = node;
+          key = 'm' + e.from + '-' + e.to; t0 = Date.now();
+          node.style.setProperty('--hop', per + 'ms');
+          path.forEach(function (cell, idx) {
+            if (idx === 0) return;
+            at(key, t0 + (idx - 1) * per, function () { placeMarble(node, cell); restart(node, 'hm-hop'); });
+          });
+          at(key, t0 + (path.length - 1) * per + 20, function () { node.classList.remove('hm-hop'); });
+          return true;
         }
         function nearest(x, y) {
           var best = -1, bd = 1e9, i, q, d;
           for (i = 0; i < N; i++) { q = pt(i); d = (q.x - x) * (q.x - x) + (q.y - y) * (q.y - y); if (d < bd) { bd = d; best = i; } }
-          return bd <= Math.pow(Math.sqrt(3) * geom.s * 0.5, 2) ? best : -1;
+          return bd <= Math.pow(geom.D * 0.5, 2) ? best : -1;
         }
-        canvas.onclick = function (ev) {
+        function markSel() { Object.keys(marbleAt).forEach(function (k) { marbleAt[k].classList.toggle('hm-sel', +k === sel); }); }
+        board.onclick = function (ev) {
           if (!view || !info || !info.canAct || G.over(view)) return;
-          var rect = canvas.getBoundingClientRect(), i = nearest(ev.clientX - rect.left, ev.clientY - rect.top);
+          var rect = board.getBoundingClientRect(), i = nearest(ev.clientX - rect.left, ev.clientY - rect.top);
           if (i < 0) return;
-          if (sel >= 0 && acts.some(function (a) { return a.from === sel && a.to === i; })) { var a = { from: sel, to: i }; sel = -1; api.act(a); return; }
+          if (sel >= 0 && acts.some(function (a) { return a.from === sel && a.to === i; })) { var a = { from: sel, to: i }; sel = -1; markSel(); api.act(a); return; }
           if (view.board[i] === info.me && acts.some(function (a) { return a.from === i; })) { sel = sel === i ? -1 : i; }
           else { if (sel >= 0) sel = -1; else api.sound('wrong'); }
-          draw(); setHint();
+          markSel(); drawOver(); setHint();
         };
         btn.onclick = function () { if (info && info.canAct && acts.length && acts[0].pass) api.act({ pass: true }); };
         function setHint() {
@@ -253,21 +353,33 @@
           else hint.textContent = sel >= 0 ? api.t('dest') : api.t('pick');
           btn.style.display = inf.canAct && !ov && acts.length && acts[0].pass ? '' : 'none';
         }
-        function relayout() { layout(); draw(); }
-        if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(relayout); ro.observe(el); } else window.addEventListener('resize', relayout);
+        function relayout() {
+          layout();
+          if (!view) return;
+          drawBase(); drawOver();
+          Object.keys(marbleAt).forEach(function (k) { placeMarble(marbleAt[k], +k, true); });
+        }
+        if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(relayout); ro.observe(board); } else window.addEventListener('resize', relayout);
         layout();
         return {
           update: function (v, inf) {
+            var first = !view, fast = root.App && root.App.fast, moved = null;
             view = v; info = inf; sel = -1;
             var ov = G.over(v), ev = inf.events || [];
             acts = inf.canAct && !ov ? G.actions(v, inf.me) : [];
+            if (first) drawBase();
+            ev.forEach(function (e) { if (e.e === 'move') moved = e; });
+            if (!first && !fast && moved) animateMove(moved);
+            if (!consistent()) rebuildMarbles();
+            markSel();
             if (ev.some(function (e) { return e.e === 'finish'; })) api.sound('win');
-            else if (ev.some(function (e) { return e.e === 'move'; })) api.sound('move');
+            else if (moved) api.sound('move');
             ev.forEach(function (e) { if (e.e === 'finish') api.toast(api.t('finished', inf.names[e.p])); });
-            draw(); setHint();
+            drawOver(); setHint();
           },
           destroy: function () {
             if (ro) ro.disconnect(); else window.removeEventListener('resize', relayout);
+            timers.forEach(clearTimeout);
             el.innerHTML = '';
           }
         };

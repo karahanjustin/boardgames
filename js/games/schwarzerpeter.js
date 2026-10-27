@@ -94,62 +94,134 @@
       return { n: s.n, me: who, counts: counts, hand: hand, pairs: s.pairs, turn: s.turn, finished: s.finished, over: s.over, loser: s.loser, last: s.last, giver: s.over ? -1 : giver(s, s.turn) };
     },
     ui: {
+      /* The table: green felt in a dark wooden rail. The other players sit along the top with fanned backs and
+         their pairs laid beside them as small stacks; the own hand is fanned along the bottom as picture cards
+         (the pair animal large, the pair number small in the corners; the Schwarzer Peter a black card with a white
+         top hat). Drawing slides a card from the neighbour's fan into the hand, a pair pops onto the stacks. */
       mount: function (el, api) {
-        var wrap = document.createElement('div'); wrap.className = 'sp';
-        var others = document.createElement('div'); others.className = 'sp-others';
-        var mid = document.createElement('div'); mid.className = 'sp-mid';
-        var mine = document.createElement('div'); mine.className = 'sp-mine';
-        wrap.appendChild(others); wrap.appendChild(mid); wrap.appendChild(mine); el.appendChild(wrap);
-        var style = document.createElement('style');
-        style.textContent = '.sp{max-width:820px;margin:0 auto;padding:6px}.sp-others{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}' +
-          '.sp-seat{background:rgba(0,0,0,.25);border-radius:12px;padding:8px;border:2px solid transparent;text-align:center}.sp-seat.turn{border-color:#fff;box-shadow:0 0 10px rgba(255,255,255,.35)}.sp-seat.giver{border-style:dashed;border-color:rgba(255,255,255,.6)}' +
-          '.sp-name{display:inline-block;font-weight:700;font-size:13px;padding:2px 8px;border-radius:8px;color:#fff;background:var(--pc,#555);margin-bottom:6px}' +
-          '.sp-fan{position:relative;height:54px;margin:0 auto;width:90px}.sp-back{position:absolute;top:0;width:34px;height:48px;border-radius:5px;background:repeating-linear-gradient(45deg,#7a1f2b 0 4px,#a5313f 4px 8px);box-shadow:0 1px 4px rgba(0,0,0,.5);border:2px solid #fff;box-sizing:border-box;transform-origin:bottom center}' +
-          '.sp-count{font-size:12px;opacity:.9}.sp-pairs{font-size:16px;letter-spacing:2px;min-height:20px;margin-top:4px;word-break:break-all}' +
-          '.sp-mid{text-align:center;padding:12px 0;min-height:60px}.sp-mid button{padding:10px 18px;border-radius:10px;border:0;font-size:15px;font-weight:600;cursor:pointer;background:#f5c542;color:#222}.sp-hint{font-size:13px;opacity:.85;margin-top:6px}' +
-          '.sp-mine{background:rgba(0,0,0,.25);border-radius:12px;padding:10px;text-align:center}.sp-title{font-size:13px;opacity:.85;margin-bottom:6px}' +
-          '.sp-hand{display:flex;flex-wrap:wrap;justify-content:center;gap:6px}.sp-card{width:48px;height:66px;border-radius:7px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:30px;box-shadow:0 2px 6px rgba(0,0,0,.45);animation:spin .25s ease-out}' +
-          '.sp-card.peter{background:#111;color:#fff;box-shadow:0 0 0 2px #fff,0 2px 8px rgba(0,0,0,.6)}@keyframes spin{from{transform:translateY(-12px);opacity:0}to{transform:none;opacity:1}}' +
-          '.sp-big{width:120px;height:170px;font-size:72px;border-radius:14px;margin:8px auto;background:#111;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 0 0 4px #fff,0 10px 30px rgba(0,0,0,.6)}.sp-big small{font-size:13px;margin-top:6px;letter-spacing:1px}.sp-loser{font-weight:700;margin-top:6px}';
-        el.appendChild(style);
-        var view = null, info = null;
+        var Gfx = root.Gfx;
+        function h(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
         function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-        function fan(count) {
-          var n = Math.min(count, 7), h = '<div class="sp-fan">';
-          for (var i = 0; i < n; i++) { var ang = (i - (n - 1) / 2) * 9, x = 28 + (i - (n - 1) / 2) * 7; h += '<div class="sp-back" style="left:' + x + 'px;transform:rotate(' + ang + 'deg)"></div>'; }
-          return h + '</div>';
+        var FRAME = '<rect x="2" y="3" width="58" height="82" rx="6" fill="rgba(0,0,0,0.3)"/>';
+        function svg(size, body) { return '<svg class="gfx gfx-card" width="' + size + '" height="' + (size * 1.4) + '" viewBox="0 0 60 84" xmlns="http://www.w3.org/2000/svg">' + body + '</svg>'; }
+        /* A picture card in the frame of the kit's playing card: the animal large, the pair number in the corners. */
+        function faceCard(c, size) {
+          if (c === PETER) return svg(size, FRAME + '<rect x="0.5" y="0.5" width="59" height="83" rx="6" fill="#161616" stroke="#4a4a4a"/><rect x="4" y="4" width="52" height="76" rx="4" fill="none" stroke="#fff" stroke-width="1" opacity="0.75"/>' +
+            '<path d="M18 50 V23 Q18 19 22 19 H38 Q42 19 42 23 V50 Z" fill="#f2f2f2"/><rect x="21" y="22" width="4" height="24" rx="2" fill="#fff"/><rect x="18" y="41" width="24" height="5" fill="#8c8c8c"/>' +
+            '<ellipse cx="30" cy="51" rx="20" ry="5.5" fill="#fff"/><ellipse cx="30" cy="51" rx="20" ry="5.5" fill="none" stroke="#b5b5b5" stroke-width="0.8"/><path d="M18 50 H42" stroke="#cfcfcf" stroke-width="0.8"/>');
+          var idx = Math.floor(c / 2) + 1, em = EMOJI[Math.floor(c / 2)];
+          var corner = '<text x="5" y="14" font-size="10" font-weight="700" font-family="Georgia,serif" fill="#7a6648">' + idx + '</text>';
+          return svg(size, FRAME + '<rect x="0.5" y="0.5" width="59" height="83" rx="6" fill="#fdfbf5" stroke="#cfc8b8"/><rect x="7" y="18" width="46" height="48" rx="3" fill="#f3ecdc" stroke="#e2d9c4"/>' + corner + '<g transform="rotate(180 30 42)">' + corner + '</g><text x="30" y="55" text-anchor="middle" font-size="34">' + em + '</text>');
         }
-        function pairsHtml(pairs) { var h = ''; for (var i = 0; i < pairs.length; i++) h += face(pairs[i][0]); return h; }
-        function render() {
-          var v = view, inf = info, i, h = '';
+        /* A laid pair: two small cards, one a little askew on the other. */
+        function pairStack(pair, size) {
+          return '<div class="sp-pair" style="width:' + Math.round(size * 1.25) + 'px;height:' + Math.round(size * 1.5) + 'px"><div class="sp-pcard" style="transform:rotate(-7deg)">' + faceCard(pair[0], size) + '</div><div class="sp-pcard" style="left:' + Math.round(size * 0.22) + 'px;top:' + Math.round(size * 0.06) + 'px;transform:rotate(6deg)">' + faceCard(pair[1], size) + '</div></div>';
+        }
+        var rail = h('div', 'sp-rail gfx-wood-dark'), table = h('div', 'sp-table gfx-felt'), seats = h('div', 'sp-seats'), mid = h('div', 'sp-mid'), handZone = h('div', 'sp-handzone'), myPairs = h('div', 'sp-mypairs'), fx = h('div', 'sp-fx');
+        rail.appendChild(table); table.appendChild(seats); table.appendChild(mid); table.appendChild(handZone); table.appendChild(myPairs); table.appendChild(fx); el.appendChild(rail);
+        var style = h('style');
+        style.textContent = '.sp-rail{border-radius:26px;padding:10px;box-shadow:0 14px 34px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.18),inset 0 -2px 0 rgba(0,0,0,.4)}' +
+          '.sp-table{position:relative;border-radius:16px;padding:10px 8px 8px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.45),inset 0 0 90px rgba(0,0,0,.4);display:flex;flex-direction:column;gap:8px;color:#fff;user-select:none;-webkit-user-select:none}' +
+          '.sp-seats{display:flex;gap:6px;justify-content:center;align-items:flex-start}.sp-seat{flex:1 1 0;min-width:0;max-width:170px;display:flex;flex-direction:column;align-items:center;gap:3px}.sp-seat.done .sp-name{opacity:.6}' +
+          '.sp-fan{position:relative;margin:0 auto;border-radius:8px}.sp-fancard{position:absolute;bottom:0;transform-origin:50% 100%}' +
+          '.sp-seat.giver .sp-fan{cursor:pointer}.sp-ring{position:absolute;left:-4px;top:-4px;right:-4px;bottom:-4px;border-radius:10px;box-shadow:0 0 0 3px #f2b632,0 0 18px #f2b632;opacity:0;transition:opacity .25s;pointer-events:none}.sp-seat.giver .sp-ring{opacity:1}' +
+          '.sp-name{display:flex;flex-direction:column;align-items:center;font-size:11px;line-height:1.2;max-width:100%;padding:3px 8px;border-radius:11px;background:rgba(0,0,0,.4);border:2px solid var(--pc);text-align:center;box-sizing:border-box}.sp-name b{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}' +
+          '.sp-seat.on .sp-name{box-shadow:0 0 0 2px rgba(255,255,255,.9),0 0 16px var(--pc);background:rgba(0,0,0,.55)}' +
+          '.sp-pairs{display:flex;flex-wrap:wrap;justify-content:center;gap:2px 4px;min-height:4px;width:100%}.sp-pair{position:relative;flex:none}.sp-pcard{position:absolute;left:0;top:0;transform-origin:50% 100%}' +
+          '.sp-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:52px}.sp-hint{font-size:13px;opacity:.92;text-shadow:0 1px 2px rgba(0,0,0,.6);text-align:center}' +
+          '.sp-btn{min-height:44px;padding:0 20px;border-radius:22px;border:0;background:linear-gradient(#ffd45a,#e9a820);color:#2a1a05;font-weight:800;font-size:15px;box-shadow:0 3px 0 #9a6a10,0 5px 10px rgba(0,0,0,.45);cursor:pointer}.sp-btn:active{transform:translateY(2px);box-shadow:0 1px 0 #9a6a10}' +
+          '.sp-big{animation:sppop .5s cubic-bezier(.2,.8,.3,1.2)}@keyframes sppop{from{transform:scale(.3) rotate(-20deg);opacity:0}to{transform:none;opacity:1}}.sp-loser{font-weight:700;font-size:15px;text-shadow:0 1px 2px rgba(0,0,0,.6)}' +
+          '.sp-handzone{position:relative}.sp-hcard{position:absolute;transform-origin:50% 100%;transition:transform .18s}.sp-title{font-size:12px;opacity:.85;text-align:center;text-shadow:0 1px 2px rgba(0,0,0,.6)}' +
+          '.sp-mypairs{display:flex;flex-wrap:wrap;justify-content:center;gap:2px 6px;min-height:4px}' +
+          '.sp-fx{position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none;z-index:60}.sp-fly{position:absolute;transform-origin:50% 50%}';
+        el.appendChild(style);
+        var view = null, info = null, prevHand = null, prevMe = -2, first = true, W = 320, cw = 60, ch = 84, ps = 22;
+        var cardEls = [], seatEls = [], fanEls = [], pairRows = [];
+        function measure() { W = Math.max(290, (el.clientWidth || 360) - 38); cw = Math.max(44, Math.min(76, Math.floor(W / 8))); ch = Math.round(cw * 1.4); ps = Math.max(18, Math.round(cw * 0.34)); }
+        function rectOf(e) { var r = e.getBoundingClientRect(), t = table.getBoundingClientRect(); return { left: r.left - t.left, top: r.top - t.top, width: r.width, height: r.height }; }
+        function flip(e, from, ms, delay, fromTf) {
+          var to = rectOf(e), base = e.getAttribute('data-tf') || '';
+          var dx = from.left + from.width / 2 - (to.left + to.width / 2), dy = from.top + from.height / 2 - (to.top + to.height / 2);
+          e.style.transition = 'none'; e.style.transform = 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px) ' + (fromTf || '');
+          void e.offsetWidth;
+          e.style.transition = 'transform ' + ms + 'ms cubic-bezier(.2,.7,.25,1) ' + (delay || 0) + 'ms'; e.style.transform = base;
+        }
+        function fly(html, from, to, ms, delay) {
+          var e = h('div', 'sp-fly', html); e.style.left = from.left + 'px'; e.style.top = from.top + 'px'; e.style.width = from.width + 'px'; e.style.height = from.height + 'px';
+          fx.appendChild(e); void e.offsetWidth;
+          e.style.transition = 'transform ' + ms + 'ms cubic-bezier(.2,.7,.25,1) ' + (delay || 0) + 'ms, opacity 160ms ' + ((delay || 0) + ms - 120) + 'ms';
+          e.style.transform = 'translate(' + (to.left + to.width / 2 - from.left - from.width / 2).toFixed(1) + 'px,' + (to.top + to.height / 2 - from.top - from.height / 2).toFixed(1) + 'px) scale(' + (to.width / from.width).toFixed(3) + ')';
+          e.style.opacity = '0';
+          setTimeout(function () { if (e.parentNode) e.parentNode.removeChild(e); }, ms + (delay || 0) + 80);
+        }
+        function render(animate) {
+          var v = view, inf = info, me = v.me, names = inf.names, i, k, c;
+          var prevRects = me === prevMe ? cardEls.map(rectOf) : null;
+          measure();
+          var bw = Math.round(cw * 0.46), bh = Math.round(bw * 1.4);
+          seats.innerHTML = ''; seatEls = []; fanEls = []; pairRows = [];
           for (i = 0; i < v.n; i++) {
-            if (i === v.me && !v.over) continue;
-            var done = v.counts[i] === 0;
-            h += '<div class="sp-seat' + (v.turn === i && !v.over ? ' turn' : '') + (v.giver === i && inf.canAct ? ' giver' : '') + '"><div class="sp-name" style="--pc:' + inf.colors[i] + '">' + esc(inf.names[i]) + '</div>' +
-              (done ? '<div class="sp-count">' + api.t('out') + '</div>' : fan(v.counts[i]) + '<div class="sp-count">' + (v.counts[i] === 1 ? api.t('card') : api.t('cards', v.counts[i])) + '</div>') +
-              '<div class="sp-pairs">' + pairsHtml(v.pairs[i]) + '</div></div>';
+            if (i === me && !v.over) { seatEls.push(null); fanEls.push(null); pairRows.push(null); continue; }
+            var cnt = v.counts[i], done = cnt === 0, isGiver = v.giver === i && inf.canAct && !v.over;
+            var s = h('div', 'sp-seat' + (v.turn === i && !v.over ? ' on' : '') + (isGiver ? ' giver' : '') + (done ? ' done' : ''));
+            s.style.setProperty('--pc', inf.colors[i]);
+            var fanN = Math.min(cnt, 7), fan = h('div', 'sp-fan'); fan.style.width = Math.round(bw * 2.4) + 'px'; fan.style.height = (bh + 8) + 'px';
+            for (k = 0; k < fanN; k++) { c = h('div', 'sp-fancard', Gfx.cardBack(bw, '#7a1f2b')); var off = k - (fanN - 1) / 2; c.style.left = Math.round(bw * 0.7 + off * bw * 0.3) + 'px'; c.style.transform = 'rotate(' + (off * 9) + 'deg)'; fan.appendChild(c); }
+            fan.appendChild(h('div', 'sp-ring'));
+            if (isGiver) fan.onclick = function () { if (info && info.canAct) api.act({ draw: true }); };
+            s.appendChild(fan);
+            s.appendChild(h('div', 'sp-name', '<b>' + esc(names[i]) + '</b><span>' + (done ? api.t('out') : cnt === 1 ? api.t('card') : api.t('cards', cnt)) + '</span>'));
+            var row = h('div', 'sp-pairs');
+            for (k = 0; k < v.pairs[i].length; k++) row.innerHTML += pairStack(v.pairs[i][k], ps);
+            s.appendChild(row);
+            seats.appendChild(s); seatEls.push(s); fanEls.push(fan); pairRows.push(row);
           }
-          others.innerHTML = h;
+          /* the middle: the draw button, the waiting text, or the Schwarzer Peter at the end */
+          mid.innerHTML = '';
           if (v.over) {
-            mid.innerHTML = '<div class="sp-big">' + face(PETER) + '<small>' + api.t('peter') + '</small></div><div class="sp-loser">' + (v.loser >= 0 ? (inf.me === v.loser ? api.t('youLose') : api.t('loser', esc(inf.names[v.loser]))) : '') + '</div>';
+            mid.appendChild(h('div', 'sp-big', faceCard(PETER, Math.round(cw * 1.5))));
+            mid.appendChild(h('div', 'sp-loser', v.loser >= 0 ? (inf.me === v.loser ? api.t('youLose') : api.t('loser', esc(names[v.loser]))) : ''));
           } else if (inf.canAct && v.giver >= 0) {
-            mid.innerHTML = '<button class="sp-draw">' + api.t('draw', esc(inf.names[v.giver])) + '</button>';
-          } else {
-            mid.innerHTML = '<div class="sp-hint">' + (v.turn >= 0 && v.giver >= 0 ? api.t('drawing', esc(inf.names[v.turn]), esc(inf.names[v.giver])) : '') + '</div>';
-          }
-          var mh = '<div class="sp-title">' + (v.over && v.loser >= 0 && v.me !== v.loser ? '' : api.t('yourHand')) + '</div><div class="sp-hand">';
-          if (!v.over && v.me >= 0 && !v.hand.length) mh += '<div class="sp-title">' + api.t('noCards') + '</div>';
-          for (i = 0; i < v.hand.length; i++) mh += '<div class="sp-card' + (v.hand[i] === PETER ? ' peter' : '') + '">' + face(v.hand[i]) + '</div>';
-          mh += '</div>';
-          if (v.me >= 0 && v.pairs[v.me] && v.pairs[v.me].length) mh += '<div class="sp-title">' + api.t('pairs') + '</div><div class="sp-pairs">' + pairsHtml(v.pairs[v.me]) + '</div>';
-          mine.innerHTML = mh;
-          mine.style.display = v.over && v.me !== v.loser ? 'none' : '';
+            var b = h('button', 'sp-btn', api.t('draw', esc(names[v.giver]))); b.onclick = function () { if (info && info.canAct) api.act({ draw: true }); }; mid.appendChild(b);
+          } else mid.appendChild(h('div', 'sp-hint', v.turn >= 0 && v.giver >= 0 ? api.t('drawing', esc(names[v.turn]), esc(names[v.giver])) : ''));
+          /* the own hand, fanned along the bottom */
+          handZone.innerHTML = ''; cardEls = [];
+          var hand = v.hand || [], nH = hand.length, showHand = !(v.over && v.me !== v.loser);
+          if (showHand) {
+            var step = nH > 1 ? Math.min(cw * 0.7, (W - cw - 6) / (nH - 1)) : 0, x0 = (W - (cw + step * (nH - 1))) / 2;
+            handZone.style.height = (ch + 22) + 'px';
+            hand.forEach(function (cid, i) {
+              var off = i - (nH - 1) / 2, ang = off * Math.min(4, 40 / Math.max(nH, 1)), bow = Math.abs(off) * Math.min(3, 24 / Math.max(nH, 1));
+              var d = h('div', 'sp-hcard', faceCard(cid, cw));
+              d.style.left = Math.round(x0 + i * step) + 'px'; d.style.top = Math.round(14 + bow) + 'px'; d.style.zIndex = 10 + i;
+              var tf = 'rotate(' + ang.toFixed(2) + 'deg)'; d.setAttribute('data-tf', tf); d.style.transform = tf;
+              handZone.appendChild(d); cardEls.push(d);
+            });
+            if (!nH && !v.over && me >= 0) handZone.appendChild(h('div', 'sp-title', api.t('noCards')));
+          } else handZone.style.height = '0px';
+          myPairs.innerHTML = '';
+          if (me >= 0 && v.pairs[me] && v.pairs[me].length && !v.over) for (k = 0; k < v.pairs[me].length; k++) myPairs.innerHTML += pairStack(v.pairs[me][k], Math.round(ps * 1.2));
+          /* the moves of the last apply, animated */
+          var evs = animate ? (inf.events || []) : [], handRect = cardEls.length ? rectOf(handZone) : null;
+          if (handRect) { handRect.left += handRect.width / 2 - cw / 2; handRect.width = cw; }
+          evs.forEach(function (e, ei) {
+            if (e.e === 'draw') {
+              var src = fanEls[e.from] ? rectOf(fanEls[e.from]) : handRect;
+              if (e.to === me && showHand) {
+                var fresh = -1; if (prevHand) for (k = 0; k < hand.length; k++) if (prevHand.indexOf(hand[k]) < 0) fresh = k;
+                if (fresh >= 0 && src) flip(cardEls[fresh], src, 340, 0, 'rotate(0deg)');
+                else if (src && handRect) fly(Gfx.cardBack(cw, '#7a1f2b'), src, handRect, 340, 0);
+              } else if (fanEls[e.to] && src) fly(Gfx.cardBack(cw, '#7a1f2b'), src, rectOf(fanEls[e.to]), 340, 0);
+            } else if (e.e === 'pair') {
+              var row = e.p === me && !v.over ? myPairs : pairRows[e.p], stack = row && row.lastElementChild, from = e.p === me && !v.over ? handRect : (fanEls[e.p] ? rectOf(fanEls[e.p]) : null);
+              if (stack && from) { stack.style.position = 'relative'; flip(stack, from, 320, 300, 'scale(2)'); }
+            }
+          });
+          if (first && animate && handRect) { first = false; var mr = rectOf(mid); cardEls.forEach(function (d, k) { flip(d, mr, 300, k * 40, 'rotate(0deg)'); }); }
+          prevHand = hand.slice(); prevMe = me;
         }
-        mid.onclick = function (ev) {
-          var b = ev.target.closest ? ev.target.closest('button.sp-draw') : null;
-          if (!b || !info || !info.canAct) return;
-          api.act({ draw: true });
-        };
+        function onResize() { if (view && info) render(false); }
+        window.addEventListener('resize', onResize);
         return {
           update: function (v, inf) {
             view = v; info = inf;
@@ -158,9 +230,9 @@
               if (e.e === 'pair') { api.sound('capture'); if (e.p === inf.me) api.toast(api.t('pairMade')); }
               if (e.e === 'peter') api.sound(e.p === inf.me ? 'lose' : 'win');
             });
-            render();
+            render(true);
           },
-          destroy: function () { el.innerHTML = ''; }
+          destroy: function () { window.removeEventListener('resize', onResize); el.innerHTML = ''; }
         };
       }
     }

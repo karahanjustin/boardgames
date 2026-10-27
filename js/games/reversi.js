@@ -162,13 +162,14 @@
     },
     ui: {
       mount: function (el, api) {
+        var Gfx = root.Gfx;
         var wrap = document.createElement('div'); wrap.className = 'rv-wrap';
         var bar = document.createElement('div'); bar.className = 'rv-bar';
-        var board = document.createElement('div'); board.className = 'rv-board';
+        var board = document.createElement('div'); board.className = 'rv-board gfx-felt gfx-frame';
         var hint = document.createElement('div'); hint.className = 'rv-hint';
         var passBtn = document.createElement('button'); passBtn.className = 'rv-pass'; passBtn.type = 'button'; passBtn.style.display = 'none';
         wrap.appendChild(bar); wrap.appendChild(board); wrap.appendChild(hint); wrap.appendChild(passBtn); el.appendChild(wrap);
-        var sq = [], view = null, info = null, acts = [], k;
+        var sq = [], discs = [], view = null, info = null, acts = [], timers = [], k;
         for (k = 0; k < CELLS; k++) {
           var d = document.createElement('div'); d.className = 'rv-sq'; d.dataset.i = k;
           d.onclick = function (ev) {
@@ -176,26 +177,62 @@
             var i = +ev.currentTarget.dataset.i, q;
             for (q = 0; q < acts.length; q++) if (acts[q].at === i) { api.act(acts[q]); return; }
           };
-          board.appendChild(d); sq.push(d);
+          board.appendChild(d); sq.push(d); discs.push(null);
         }
         passBtn.onclick = function () { if (info && info.canAct && acts.length && acts[0].pass) api.act(acts[0]); };
-        function paint(events) {
+        /* Sets the disc of square i to colour p (or none), reusing the element when only the colour changes. */
+        function setDisc(i, p, drop) {
+          var d = discs[i];
+          if (p < 0) { if (d) { sq[i].removeChild(d); discs[i] = null; } return; }
+          if (!d) { d = document.createElement('div'); d.className = 'rv-disc'; sq[i].appendChild(d); discs[i] = d; d.dataset.p = ''; }
+          if (d.dataset.p !== String(p)) { d.dataset.p = p; d.innerHTML = Gfx.disc(info.colors[p], 40); }
+          d.classList.toggle('drop', !!drop);
+        }
+        function later(f, ms) { timers.push(setTimeout(f, ms)); }
+        function stopAnim() {
+          timers.forEach(clearTimeout); timers = [];
+          discs.forEach(function (d) { if (d) { d.style.transform = ''; d.style.transition = ''; } });
+        }
+        /* The flip ripples outward from the placed disc: each disc squashes to a line, swaps colour and opens again. */
+        function animateFlip(at, flipped, p) {
+          var r0 = at >> 3, c0 = at & 7;
+          flipped.forEach(function (i) {
+            var d = discs[i], dist = Math.max(Math.abs((i >> 3) - r0), Math.abs((i & 7) - c0)), delay = 60 + dist * 70;
+            if (!d) return;
+            later(function () {
+              d.style.transition = 'transform .13s ease-in'; d.style.transform = 'scaleY(0.04)';
+            }, delay);
+            later(function () {
+              setDisc(i, p, false);
+              d.style.transition = 'transform .15s cubic-bezier(.2,.8,.3,1.25)'; d.style.transform = 'scaleY(1)';
+            }, delay + 140);
+            later(function () { d.style.transform = ''; d.style.transition = ''; }, delay + 320);
+          });
+        }
+        /* A count as a small stack of discs with the number beside it. */
+        function stack(color, n) {
+          var h = '', q, size = 24, show = Math.min(Math.ceil(n / 4), 10), lift = 4;
+          for (q = 0; q < show; q++) h += '<span style="bottom:' + (q * lift) + 'px">' + Gfx.disc(color, size) + '</span>';
+          return '<div class="rv-stack" style="width:' + size + 'px;height:' + (size * 0.8 + Math.max(show - 1, 0) * lift) + 'px">' + h + '</div>';
+        }
+        function paint() {
           if (!view || !info) return;
-          var ov = G.over(view), legal = {}, i, v, flipSet = {}, n = counts(view.cells), q;
+          var ov = G.over(view), legal = {}, i, n = counts(view.cells);
           acts.forEach(function (a) { if (a.at !== undefined) legal[a.at] = true; });
-          (events || []).forEach(function (e) { if (e.e === 'flip') for (q = 0; q < e.at.length; q++) flipSet[e.at[q]] = true; });
           for (i = 0; i < CELLS; i++) {
-            v = view.cells[i];
-            sq[i].innerHTML = v >= 0 ? '<i class="rv-disc' + (flipSet[i] ? ' flip' : '') + (i === view.last ? ' drop' : '') + '" style="--pc:' + info.colors[v] + '"></i>' : '';
             sq[i].classList.toggle('legal', !!legal[i] && info.canAct);
             sq[i].classList.toggle('last', i === view.last);
           }
           bar.innerHTML = '';
           for (i = 0; i < 2; i++) {
-            var side = document.createElement('div'); side.className = 'rv-side' + (!ov && view.turn === i ? ' on' : '');
-            var disc = document.createElement('i'); disc.className = 'rv-disc small'; disc.style.setProperty('--pc', info.colors[i]);
-            var txt = document.createElement('span'); txt.textContent = info.names[i] + ': ' + n[i];
-            side.appendChild(disc); side.appendChild(txt); bar.appendChild(side);
+            var side = document.createElement('div'); side.className = 'rv-side' + (!ov && view.turn === i ? ' on' : '') + (i === 1 ? ' right' : '');
+            var st = document.createElement('div'); st.className = 'rv-hand'; st.innerHTML = stack(info.colors[i], n[i]);
+            var who = document.createElement('div'); who.className = 'rv-who';
+            var name = document.createElement('small'); name.textContent = info.names[i];
+            var num = document.createElement('b'); num.textContent = n[i];
+            who.appendChild(num); who.appendChild(name);
+            if (i === 0) { side.appendChild(st); side.appendChild(who); } else { side.appendChild(who); side.appendChild(st); }
+            bar.appendChild(side);
           }
           var mustPass = info.canAct && acts.length && acts[0].pass;
           passBtn.style.display = mustPass ? '' : 'none';
@@ -207,28 +244,40 @@
         }
         var style = document.createElement('style');
         style.textContent = '.rv-wrap{max-width:min(100%,540px);margin:0 auto}' +
-          '.rv-board{display:grid;grid-template-columns:repeat(8,1fr);gap:2px;padding:6px;background:#0f3d1c;border-radius:10px;box-shadow:inset 0 0 0 2px #0a2b13,0 8px 24px rgba(0,0,0,.4);aspect-ratio:1;user-select:none}' +
-          '.rv-sq{position:relative;aspect-ratio:1;background:linear-gradient(135deg,#2f8f45,#237a37);border-radius:3px}' +
-          '.rv-sq.legal::after{content:"";position:absolute;inset:38%;border-radius:50%;background:rgba(255,255,255,.35);box-shadow:0 0 0 2px rgba(255,255,255,.25)}' +
-          '.rv-sq.last{box-shadow:inset 0 0 0 2px rgba(255,235,120,.9)}' +
-          '.rv-disc{position:absolute;inset:10%;border-radius:50%;background:var(--pc);box-shadow:inset -3px -5px 0 rgba(0,0,0,.3),inset 3px 4px 0 rgba(255,255,255,.25),0 2px 4px rgba(0,0,0,.45)}' +
-          '.rv-disc.flip{animation:rvflip .45s ease-in-out}.rv-disc.drop{animation:rvdrop .25s ease-out}' +
-          '@keyframes rvflip{0%{transform:rotateY(180deg) scale(.9);filter:brightness(.4)}60%{filter:brightness(1.3)}100%{transform:none;filter:none}}' +
-          '@keyframes rvdrop{from{transform:scale(.3);opacity:0}to{transform:none;opacity:1}}' +
-          '.rv-bar{display:flex;justify-content:space-between;gap:12px;margin:0 0 10px;font-size:15px}' +
-          '.rv-side{display:flex;align-items:center;gap:8px;padding:4px 10px;border-radius:999px;opacity:.6}' +
+          '.rv-board{position:relative;display:grid;grid-template-columns:repeat(8,1fr);aspect-ratio:1;padding:1.2%;user-select:none;box-shadow:0 14px 34px rgba(0,0,0,.5),inset 0 0 0 2px rgba(0,0,0,.35),inset 0 3px 8px rgba(0,0,0,.35)}' +
+          '.rv-sq{position:relative;aspect-ratio:1;box-shadow:inset 0 0 0 1px rgba(0,0,0,.4),inset 1px 1px 0 rgba(255,255,255,.05)}' +
+          '.rv-sq.legal::after{content:"";position:absolute;inset:40%;border-radius:50%;background:rgba(255,255,255,.4);box-shadow:0 0 0 2px rgba(255,255,255,.2),0 0 6px rgba(255,255,255,.35)}' +
+          '.rv-sq.last::before{content:"";position:absolute;inset:0;box-shadow:inset 0 0 0 2px rgba(255,235,120,.9);pointer-events:none;z-index:2}' +
+          '.rv-disc{position:absolute;inset:7% 6% 1% 6%;display:flex;align-items:center;transform-origin:50% 52%;will-change:transform}' +
+          '.rv-disc svg{width:100%;height:auto;overflow:visible}' +
+          '.rv-disc.drop{animation:rvdrop .28s cubic-bezier(.2,.8,.3,1.2)}' +
+          '@keyframes rvdrop{from{transform:translateY(-50%) scale(1.3);opacity:0}}' +
+          '.rv-bar{display:flex;justify-content:space-between;gap:10px;margin:0 0 10px;font-size:15px}' +
+          '.rv-side{display:flex;align-items:center;gap:10px;min-height:44px;padding:4px 12px;border-radius:12px;opacity:.6}' +
           '.rv-side.on{opacity:1;background:rgba(255,255,255,.1);box-shadow:0 0 0 1px rgba(255,255,255,.25)}' +
-          '.rv-disc.small{position:static;display:inline-block;width:18px;height:18px}' +
-          '.rv-hint{text-align:center;margin-top:10px;font-size:14px;opacity:.85;min-height:18px}' +
-          '.rv-pass{display:block;margin:8px auto 0;padding:8px 18px;border-radius:999px;border:0;background:#ffd54a;color:#222;font-size:15px;cursor:pointer}';
+          '.rv-side.right{text-align:right}' +
+          '.rv-who{display:flex;flex-direction:column;line-height:1.15}.rv-who b{font-size:20px}.rv-who small{opacity:.75;font-size:12px}' +
+          '.rv-hand{display:flex;align-items:flex-end;min-width:24px}' +
+          '.rv-stack{position:relative}.rv-stack span{position:absolute;left:0;display:block;width:100%}.rv-stack svg{width:100%;height:auto;overflow:visible}' +
+          '.rv-hint{text-align:center;margin-top:12px;font-size:14px;opacity:.85;min-height:18px}' +
+          '.rv-pass{display:block;margin:10px auto 0;min-height:44px;padding:8px 24px;border-radius:999px;border:0;background:#ffd54a;color:#222;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 4px 10px rgba(0,0,0,.35)}';
         el.appendChild(style);
         return {
           update: function (v, inf) {
+            var prev = view, fast = root.App && root.App.fast, placed = -1, flipped = null, p = -1, i;
+            stopAnim();
             view = v; info = inf;
             acts = inf.canAct ? G.actions(v, inf.me) : [];
-            paint(inf.events);
+            (inf.events || []).forEach(function (e) { if (e.e === 'place') { placed = e.at; p = e.p; } else if (e.e === 'flip') flipped = e.at; });
+            var anim = prev && !fast && placed >= 0 && flipped && flipped.length;
+            for (i = 0; i < CELLS; i++) {
+              if (anim && flipped.indexOf(i) >= 0 && prev.cells[i] >= 0) setDisc(i, prev.cells[i], false);
+              else setDisc(i, v.cells[i], anim && i === placed);
+            }
+            if (anim) animateFlip(placed, flipped, p);
+            paint();
           },
-          destroy: function () { el.innerHTML = ''; }
+          destroy: function () { stopAnim(); el.innerHTML = ''; }
         };
       }
     }

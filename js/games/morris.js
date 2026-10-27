@@ -185,30 +185,92 @@
     },
     ui: {
       mount: function (el, api) {
-        var NS = 'http://www.w3.org/2000/svg';
+        var Gfx = root.Gfx, NS = 'http://www.w3.org/2000/svg';
         function mk(tag, attrs, parent) { var n = document.createElementNS(NS, tag), k; for (k in attrs) n.setAttribute(k, attrs[k]); if (parent) parent.appendChild(n); return n; }
         var wrap = document.createElement('div'); wrap.className = 'mo-wrap';
         var bar = document.createElement('div'); bar.className = 'mo-bar';
-        var svg = mk('svg', { viewBox: '0 0 700 700', 'class': 'mo-board' });
+        var board = document.createElement('div'); board.className = 'mo-board gfx-frame';
+        var svg = mk('svg', { viewBox: '0 0 700 700', 'class': 'mo-svg' });
+        var layer = document.createElement('div'); layer.className = 'mo-layer';
         var hint = document.createElement('div'); hint.className = 'mo-hint';
-        wrap.appendChild(bar); wrap.appendChild(svg); wrap.appendChild(hint); el.appendChild(wrap);
+        board.appendChild(svg); board.appendChild(layer);
+        wrap.appendChild(bar); wrap.appendChild(board); wrap.appendChild(hint); el.appendChild(wrap);
         function px(i) { return 50 + PTS[i][0] * 100; }
         function py(i) { return 50 + PTS[i][1] * 100; }
-        mk('rect', { x: 0, y: 0, width: 700, height: 700, rx: 18, 'class': 'mo-bg' }, svg);
-        var k, j;
+        function pct(v) { return (v / 7) + '%'; }
+        /* The lines are burnt into the wood: a light edge below, a shadow above and the dark groove on top. */
+        var defs = mk('defs', {}, svg);
+        var dg = mk('radialGradient', { id: 'moDimple', cx: '0.5', cy: '0.4', r: '0.6' }, defs);
+        mk('stop', { offset: '0', 'stop-color': '#2e1a0b' }, dg);
+        mk('stop', { offset: '0.7', 'stop-color': '#4a2c14' }, dg);
+        mk('stop', { offset: '1', 'stop-color': '#7a5230' }, dg);
+        var k;
         for (k = 0; k < MILLS.length; k++) {
           var mm = MILLS[k];
+          mk('line', { x1: px(mm[0]), y1: py(mm[0]), x2: px(mm[2]), y2: py(mm[2]), 'class': 'mo-line-lo' }, svg);
+          mk('line', { x1: px(mm[0]), y1: py(mm[0]), x2: px(mm[2]), y2: py(mm[2]), 'class': 'mo-line-hi' }, svg);
+        }
+        for (k = 0; k < MILLS.length; k++) {
+          mm = MILLS[k];
           mk('line', { x1: px(mm[0]), y1: py(mm[0]), x2: px(mm[2]), y2: py(mm[2]), 'class': 'mo-line' }, svg);
         }
-        var dots = [], rings = [], men = [], hits = [];
-        for (k = 0; k < 24; k++) dots.push(mk('circle', { cx: px(k), cy: py(k), r: 9, 'class': 'mo-dot' }, svg));
-        for (k = 0; k < 24; k++) rings.push(mk('circle', { cx: px(k), cy: py(k), r: 36, 'class': 'mo-ring' }, svg));
-        for (k = 0; k < 24; k++) men.push(mk('circle', { cx: px(k), cy: py(k), r: 28, 'class': 'mo-man' }, svg));
         for (k = 0; k < 24; k++) {
-          var h = mk('circle', { cx: px(k), cy: py(k), r: 44, 'class': 'mo-hit' }, svg);
-          h.dataset.i = k; h.addEventListener('click', onTap); hits.push(h);
+          mk('circle', { cx: px(k), cy: py(k) + 1.5, r: 14, 'class': 'mo-dimple-hi' }, svg);
+          mk('circle', { cx: px(k), cy: py(k), r: 13, fill: 'url(#moDimple)', 'class': 'mo-dimple' }, svg);
+        }
+        var rings = [], hits = [], menAt = [], timers = [], loose = [];
+        for (k = 0; k < 24; k++) {
+          var ring = document.createElement('div'); ring.className = 'mo-ring'; ring.style.left = pct(px(k)); ring.style.top = pct(py(k)); layer.appendChild(ring); rings.push(ring);
+        }
+        var menLayer = document.createElement('div'); menLayer.className = 'mo-men'; layer.appendChild(menLayer);
+        for (k = 0; k < 24; k++) {
+          var h = document.createElement('div'); h.className = 'mo-hit'; h.style.left = pct(px(k)); h.style.top = pct(py(k));
+          h.dataset.i = k; h.addEventListener('click', onTap); layer.appendChild(h); hits.push(h);
         }
         var view = null, info = null, acts = [], sel = -1, seenMoves = -1;
+        function place(elm, i) { elm.style.left = pct(px(i)); elm.style.top = pct(py(i)); }
+        function makeMan(p, i, drop) {
+          var m = document.createElement('div'); m.className = 'mo-man' + (drop ? ' drop' : '');
+          var lift = document.createElement('div'); lift.className = 'mo-lift'; lift.innerHTML = Gfx.disc(info.colors[p], 40); m.appendChild(lift);
+          m.dataset.p = p; place(m, i); menLayer.appendChild(m);
+          return m;
+        }
+        function sync() {
+          var i, v;
+          for (i = 0; i < 24; i++) {
+            v = view.cells[i];
+            if (v < 0 && menAt[i]) { menLayer.removeChild(menAt[i]); menAt[i] = null; }
+            else if (v >= 0 && !menAt[i]) menAt[i] = makeMan(v, i, false);
+            else if (v >= 0 && menAt[i].dataset.p !== String(v)) { menLayer.removeChild(menAt[i]); menAt[i] = makeMan(v, i, false); }
+            else if (v >= 0) place(menAt[i], i);
+          }
+        }
+        function stopAnim() {
+          timers.forEach(clearTimeout); timers = [];
+          loose.forEach(function (x) { if (x.parentNode) x.parentNode.removeChild(x); }); loose = [];
+        }
+        function later(f, ms) { timers.push(setTimeout(f, ms)); }
+        /* The events of the last action: a man drops onto its point, slides along a line or pops away. */
+        function animate(events) {
+          var handled = false;
+          events.forEach(function (e) {
+            if (e.e === 'place') {
+              if (!menAt[e.at]) { menAt[e.at] = makeMan(e.p, e.at, true); handled = true; }
+            } else if (e.e === 'move') {
+              var m = menAt[e.from];
+              if (m && !menAt[e.to]) { menAt[e.from] = null; menAt[e.to] = m; m.classList.add('moving'); place(m, e.to); later(function () { m.classList.remove('moving'); }, 280); handled = true; }
+            } else if (e.e === 'remove') {
+              var victim = menAt[e.at];
+              if (victim) { menAt[e.at] = null; loose.push(victim); victim.classList.add('pop'); later(function () { if (victim.parentNode) victim.parentNode.removeChild(victim); loose = loose.filter(function (x) { return x !== victim; }); }, 360); handled = true; }
+            } else if (e.e === 'mill') {
+              MILLS_AT[e.at].forEach(function (mi) {
+                var mm = MILLS[mi];
+                if (view.cells[mm[0]] === e.p && view.cells[mm[1]] === e.p && view.cells[mm[2]] === e.p) mm.forEach(function (q) { if (menAt[q]) { menAt[q].classList.add('mill'); later(function () { if (menAt[q]) menAt[q].classList.remove('mill'); }, 900); } });
+              });
+            }
+          });
+          return handled;
+        }
         function onTap(ev) {
           if (!info || !info.canAct || !view) return;
           var i = +ev.currentTarget.dataset.i, a;
@@ -220,30 +282,43 @@
           if (a) { sel = -1; api.act(a); } else { sel = -1; paint(); }
         }
         function find(f) { for (var q = 0; q < acts.length; q++) if (f(acts[q])) return acts[q]; return null; }
+        /* The hand of a player as a small stack of discs beside the name. */
+        function stack(color, n) {
+          var h = '', q, size = 24, show = Math.min(n, 9), lift = 4;
+          for (q = 0; q < show; q++) h += '<span style="bottom:' + (q * lift) + 'px">' + Gfx.disc(color, size) + '</span>';
+          return '<div class="mo-stack" style="width:' + size + 'px;height:' + (size * 0.8 + Math.max(show - 1, 0) * lift) + 'px">' + h + '</div>';
+        }
         function paint() {
           if (!view || !info) return;
-          var ov = G.over(view), i, v, play = {}, own = {}, flying = false, n;
+          var ov = G.over(view), i, play = {}, own = {}, flying = false, n, m;
           if (info.canAct) acts.forEach(function (a) {
             if (a.take !== undefined) play[a.take] = true;
             else if (a.place !== undefined) play[a.place] = true;
             else { own[a.move[0]] = true; if (sel === a.move[0]) play[a.move[1]] = true; }
           });
           for (i = 0; i < 24; i++) {
-            v = view.cells[i];
-            men[i].style.display = v >= 0 ? '' : 'none';
-            if (v >= 0) men[i].setAttribute('fill', info.colors[v]);
-            men[i].classList.toggle('sel', i === sel);
-            men[i].classList.toggle('last', i === view.last && !ov);
-            rings[i].classList.toggle('on', !!play[i] || (!!own[i] && sel < 0));
+            m = menAt[i];
+            if (m) {
+              m.classList.toggle('sel', i === sel);
+              m.classList.toggle('mover', !!own[i] && sel < 0);
+              m.classList.toggle('take', !!play[i] && view.take);
+              m.classList.toggle('last', i === view.last && !ov && !view.take);
+            }
+            rings[i].classList.toggle('on', !!play[i] && !view.take && sel >= 0);
+            rings[i].classList.toggle('spot', !!play[i] && !view.take && sel < 0);
             rings[i].classList.toggle('take', !!play[i] && view.take);
             hits[i].style.cursor = info.canAct && (play[i] || own[i]) ? 'pointer' : 'default';
           }
           bar.innerHTML = '';
           for (i = 0; i < 2; i++) {
-            var side = document.createElement('div'); side.className = 'mo-side' + (!ov && view.turn === i ? ' on' : '');
-            var disc = document.createElement('i'); disc.className = 'mo-disc'; disc.style.background = info.colors[i];
-            var txt = document.createElement('span'); txt.textContent = info.names[i] + ' ' + api.t('onBoard', count(view.cells, i)) + ', ' + api.t('inHand', view.hand[i]);
-            side.appendChild(disc); side.appendChild(txt); bar.appendChild(side);
+            var side = document.createElement('div'); side.className = 'mo-side' + (!ov && view.turn === i ? ' on' : '') + (i === 1 ? ' right' : '');
+            var who = document.createElement('div'); who.className = 'mo-who';
+            var name = document.createElement('b'); name.textContent = info.names[i];
+            var txt = document.createElement('small'); txt.textContent = api.t('onBoard', count(view.cells, i)) + ' / ' + api.t('inHand', view.hand[i]);
+            who.appendChild(name); who.appendChild(txt);
+            var st = document.createElement('div'); st.className = 'mo-hand'; st.innerHTML = view.hand[i] > 0 ? stack(info.colors[i], view.hand[i]) : '<span class="mo-none">' + Gfx.disc(info.colors[i], 24) + '</span>';
+            if (i === 0) { side.appendChild(st); side.appendChild(who); } else { side.appendChild(who); side.appendChild(st); }
+            bar.appendChild(side);
           }
           if (ov) hint.textContent = ov.winner < 0 ? api.t('drawn') : api.t('won', info.names[ov.winner]);
           else if (!info.canAct) hint.textContent = api.t('wait', info.names[view.turn]);
@@ -254,29 +329,58 @@
         }
         var style = document.createElement('style');
         style.textContent = '.mo-wrap{max-width:min(100%,560px);margin:0 auto}' +
-          '.mo-board{display:block;width:100%;aspect-ratio:1;user-select:none}' +
-          '.mo-bg{fill:#2b2f3a;stroke:#4a5063;stroke-width:4}' +
-          '.mo-line{stroke:#b9c1d6;stroke-width:5;stroke-linecap:round}' +
-          '.mo-dot{fill:#b9c1d6}' +
-          '.mo-ring{fill:none;stroke:rgba(255,215,80,.9);stroke-width:4;stroke-dasharray:8 6;opacity:0;transition:opacity .15s}' +
-          '.mo-ring.on{opacity:1}.mo-ring.take{stroke:#ff6b6b}' +
-          '.mo-man{stroke:rgba(0,0,0,.45);stroke-width:3;filter:drop-shadow(0 3px 3px rgba(0,0,0,.5))}' +
-          '.mo-man.sel{stroke:#ffd54a;stroke-width:6}.mo-man.last{stroke:rgba(255,255,255,.85);stroke-width:4}' +
-          '.mo-hit{fill:transparent}' +
-          '.mo-bar{display:flex;justify-content:space-between;gap:12px;margin:0 0 10px;font-size:14px;flex-wrap:wrap}' +
-          '.mo-side{display:flex;align-items:center;gap:8px;padding:4px 10px;border-radius:999px;opacity:.6}' +
+          '.mo-board{position:relative;aspect-ratio:1;border-radius:4px;background-color:#b07a46;background-image:' + Gfx.noise(13, '#b07a46', '0.02 0.7', 3) + ';user-select:none}' +
+          '.mo-board::before{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 2px rgba(0,0,0,.25),inset 0 4px 10px rgba(0,0,0,.25),inset 0 -2px 0 rgba(255,255,255,.08)}' +
+          '.mo-svg{display:block;width:100%;height:100%;overflow:visible}' +
+          '.mo-line-lo{stroke:rgba(255,235,200,.28);stroke-width:9;stroke-linecap:round;transform:translate(0,2.5px)}' +
+          '.mo-line-hi{stroke:rgba(0,0,0,.3);stroke-width:9;stroke-linecap:round;transform:translate(0,-2px)}' +
+          '.mo-line{stroke:#3a200c;stroke-width:7;stroke-linecap:round}' +
+          '.mo-dimple-hi{fill:rgba(255,235,200,.3)}' +
+          '.mo-dimple{stroke:rgba(0,0,0,.45);stroke-width:1}' +
+          '.mo-layer{position:absolute;inset:0}' +
+          '.mo-ring,.mo-hit,.mo-man{position:absolute;transform:translate(-50%,-50%)}' +
+          '.mo-ring{width:13%;height:13%;border-radius:50%;opacity:0;transition:opacity .15s;pointer-events:none;box-shadow:0 0 0 3px rgba(255,222,120,.85),0 0 12px 4px rgba(255,200,80,.45),inset 0 0 10px rgba(255,220,120,.45)}' +
+          '.mo-ring.on{opacity:1;animation:moring 1.2s ease-in-out infinite}' +
+          '.mo-ring.spot{opacity:1;width:4.5%;height:4.5%;box-shadow:none;background:rgba(255,236,170,.55);border:1px solid rgba(90,50,20,.5)}' +
+          '.mo-ring.take{opacity:1;box-shadow:0 0 0 3px rgba(235,60,50,.95),0 0 14px 5px rgba(235,60,50,.55);animation:moring 1.2s ease-in-out infinite}' +
+          '@keyframes moring{50%{transform:translate(-50%,-50%) scale(.92)}}' +
+          '.mo-men{position:absolute;inset:0;pointer-events:none}' +
+          '.mo-man{width:12%;height:12%;transition:left .26s cubic-bezier(.3,.7,.3,1),top .26s cubic-bezier(.3,.7,.3,1)}' +
+          '.mo-lift{position:absolute;inset:4% 2% 0 2%;display:flex;align-items:center;transition:transform .16s ease,filter .16s ease}' +
+          '.mo-lift svg{width:100%;height:auto;overflow:visible}' +
+          '.mo-man.mover .mo-lift{filter:drop-shadow(0 0 5px rgba(255,236,160,.95)) drop-shadow(0 0 2px rgba(255,236,160,.9))}' +
+          '.mo-man.sel .mo-lift{transform:translateY(-12%) scale(1.1);filter:drop-shadow(0 8px 6px rgba(0,0,0,.5)) drop-shadow(0 0 6px rgba(255,236,160,.9))}' +
+          '.mo-man.moving .mo-lift{transform:translateY(-10%) scale(1.08);filter:drop-shadow(0 10px 8px rgba(0,0,0,.5))}' +
+          '.mo-man.take .mo-lift{filter:drop-shadow(0 0 6px rgba(235,60,50,.95))}' +
+          '.mo-man.last .mo-lift{filter:drop-shadow(0 0 4px rgba(255,255,255,.7))}' +
+          '.mo-man.mill .mo-lift{animation:momill .45s ease-in-out 2}' +
+          '@keyframes momill{50%{transform:translateY(-14%) scale(1.12);filter:drop-shadow(0 0 8px rgba(255,236,160,1))}}' +
+          '.mo-man.drop .mo-lift{animation:modrop .3s cubic-bezier(.2,.8,.3,1.2)}' +
+          '@keyframes modrop{from{transform:translateY(-60%) scale(1.3);opacity:0}}' +
+          '.mo-man.pop .mo-lift{animation:mopop .34s ease-out forwards}' +
+          '@keyframes mopop{40%{transform:translateY(-20%) scale(1.25);opacity:1}100%{transform:translateY(-40%) scale(.4);opacity:0}}' +
+          '.mo-hit{width:14%;height:14%;border-radius:50%}' +
+          '.mo-bar{display:flex;justify-content:space-between;gap:10px;margin:0 0 10px;font-size:14px}' +
+          '.mo-side{display:flex;align-items:center;gap:10px;min-height:44px;padding:4px 12px;border-radius:12px;opacity:.6}' +
           '.mo-side.on{opacity:1;background:rgba(255,255,255,.1);box-shadow:0 0 0 1px rgba(255,255,255,.25)}' +
-          '.mo-disc{display:inline-block;width:16px;height:16px;border-radius:50%;box-shadow:inset -2px -3px 0 rgba(0,0,0,.3)}' +
-          '.mo-hint{text-align:center;margin-top:10px;font-size:14px;opacity:.85;min-height:18px}';
+          '.mo-side.right{text-align:right}' +
+          '.mo-who{display:flex;flex-direction:column;line-height:1.2}.mo-who small{opacity:.75;font-size:12px}' +
+          '.mo-hand{display:flex;align-items:flex-end;min-width:24px}' +
+          '.mo-stack{position:relative}.mo-stack span{position:absolute;left:0;display:block;width:100%}.mo-stack svg{width:100%;height:auto;overflow:visible}' +
+          '.mo-none{display:block;width:24px;opacity:.35}.mo-none svg{width:100%;height:auto}' +
+          '.mo-hint{text-align:center;margin-top:12px;font-size:14px;opacity:.85;min-height:18px}';
         el.appendChild(style);
         return {
           update: function (v, inf) {
+            var prev = view, fast = root.App && root.App.fast;
+            stopAnim();
             view = v; info = inf;
             if (v.moves !== seenMoves) { sel = -1; seenMoves = v.moves; }
             acts = inf.canAct ? G.actions(v, inf.me) : [];
-            paint();
+            if (prev && !fast) animate(inf.events || []);
+            sync(); paint();
           },
-          destroy: function () { el.innerHTML = ''; }
+          destroy: function () { stopAnim(); el.innerHTML = ''; }
         };
       }
     }

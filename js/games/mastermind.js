@@ -138,33 +138,46 @@
     },
     ui: {
       mount: function (el, api) {
+        /* A wooden decoding board in a frame: the secret code under a wooden lid at the far end, ten rows of four
+           dimples for glass marbles (row 1 nearest the player), a 2 x 2 cluster of small pins beside each row, and the
+           marbles to pick from in a tray below the board. */
         var wrap = document.createElement('div'); wrap.className = 'mm-wrap';
-        var secretBox = document.createElement('div'); secretBox.className = 'mm-secret';
-        var secretLabel = document.createElement('div'); secretLabel.className = 'mm-label'; secretLabel.textContent = api.t('secret');
-        var secretRow = document.createElement('div'); secretRow.className = 'mm-row';
-        secretBox.appendChild(secretLabel); secretBox.appendChild(secretRow);
-        var board = document.createElement('div'); board.className = 'mm-board';
+        var board = document.createElement('div'); board.className = 'mm-board gfx-wood gfx-frame';
+        function hole(k) { var h = document.createElement('div'); h.className = 'mm-hole'; h.dataset.k = k; return h; }
+        var secretRow = document.createElement('div'); secretRow.className = 'mm-row mm-srow';
+        var sNum = document.createElement('span'); sNum.className = 'mm-num'; secretRow.appendChild(sNum);
+        var lidWrap = document.createElement('div'); lidWrap.className = 'mm-lidwrap';
+        var sHoles = document.createElement('div'); sHoles.className = 'mm-holes';
+        var secretHoles = [], k, i;
+        for (k = 0; k < PEGS; k++) { var sh = hole(k); sHoles.appendChild(sh); secretHoles.push(sh); }
+        var lid = document.createElement('div'); lid.className = 'mm-lid gfx-wood-dark'; lid.innerHTML = '<i></i>';
+        lidWrap.appendChild(sHoles); lidWrap.appendChild(lid);
+        var secretLabel = document.createElement('div'); secretLabel.className = 'mm-label';
+        secretRow.appendChild(lidWrap); secretRow.appendChild(secretLabel);
+        board.appendChild(secretRow);
         var rows = [];
-        for (var i = 0; i < MAX; i++) {
+        for (i = 0; i < MAX; i++) {
           var row = document.createElement('div'); row.className = 'mm-row';
+          var num = document.createElement('span'); num.className = 'mm-num'; num.textContent = String(i + 1); row.appendChild(num);
+          var holes = document.createElement('div'); holes.className = 'mm-holes';
           var pegs = [], fbs = [];
-          for (var k = 0; k < PEGS; k++) { var pg = document.createElement('div'); pg.className = 'mm-peg empty'; pg.dataset.k = k; row.appendChild(pg); pegs.push(pg); }
+          for (k = 0; k < PEGS; k++) { var hh = hole(k); holes.appendChild(hh); pegs.push(hh); }
+          row.appendChild(holes);
           var fbBox = document.createElement('div'); fbBox.className = 'mm-fb';
           for (k = 0; k < PEGS; k++) { var f = document.createElement('i'); fbBox.appendChild(f); fbs.push(f); }
           row.appendChild(fbBox);
-          var num = document.createElement('span'); num.className = 'mm-num'; num.textContent = String(i + 1);
-          row.appendChild(num);
-          board.appendChild(row);
           rows.push({ el: row, pegs: pegs, fbs: fbs });
         }
-        var palette = document.createElement('div'); palette.className = 'mm-palette';
+        for (i = MAX - 1; i >= 0; i--) board.appendChild(rows[i].el);
+        var tray = document.createElement('div'); tray.className = 'mm-tray gfx-wood-dark';
         var input = [], view = null, info = null, me = -1;
         function role() { return view ? (view.code === null && !view.codeSet ? 'make' : 'break') : 'break'; }
         function acting() { return !!(info && info.canAct); }
         PALETTE.forEach(function (col, ci) {
-          var b = document.createElement('button'); b.className = 'mm-swatch'; b.style.background = col; b.title = api.t(COLOR_KEYS[ci]);
+          var b = document.createElement('button'); b.className = 'mm-swatch'; b.title = api.t(COLOR_KEYS[ci]);
+          b.innerHTML = Gfx.marble(col, 44);
           b.onclick = function () { if (!acting() || input.length >= PEGS) return; input.push(ci); api.sound('move'); render(); };
-          palette.appendChild(b);
+          tray.appendChild(b);
         });
         var bar = document.createElement('div'); bar.className = 'mm-bar';
         function button(key, fn) { var b = document.createElement('button'); b.className = 'mm-btn'; b.textContent = api.t(key); b.onclick = fn; bar.appendChild(b); return b; }
@@ -178,22 +191,29 @@
         });
         var hint = document.createElement('div'); hint.className = 'mm-hint';
         var legend = document.createElement('div'); legend.className = 'mm-legend'; legend.textContent = api.t('legend');
-        wrap.appendChild(secretBox); wrap.appendChild(board); wrap.appendChild(palette); wrap.appendChild(bar); wrap.appendChild(hint); wrap.appendChild(legend);
+        wrap.appendChild(board); wrap.appendChild(tray); wrap.appendChild(bar); wrap.appendChild(hint); wrap.appendChild(legend);
         el.appendChild(wrap);
+        function layout() {
+          var bw = Math.min(wrap.clientWidth || el.clientWidth || 340, 440);
+          var peg = Math.max(26, Math.min(36, Math.floor((bw - 20 - 16 - 24 - 46 - 7 * 8) / 4)));
+          wrap.style.setProperty('--peg', peg + 'px'); wrap.style.setProperty('--pin', Math.round(peg * 0.34) + 'px');
+        }
+        function setHole(h, c, editable) {
+          h.className = 'mm-hole' + (c == null ? '' : ' filled') + (editable ? ' edit' : '');
+          h.innerHTML = c == null ? '' : Gfx.marble(PALETTE[c], 40);
+          h.title = c == null ? '' : api.t(COLOR_KEYS[c]);
+        }
         function fillRow(row, code, fb, editable) {
-          for (var k = 0; k < PEGS; k++) {
-            var pg = row.pegs[k], c = code ? code[k] : null;
-            pg.className = 'mm-peg' + (c == null ? ' empty' : '') + (editable ? ' edit' : '');
-            pg.style.background = c == null ? '' : PALETTE[c];
-            pg.title = c == null ? '' : api.t(COLOR_KEYS[c]);
-          }
+          for (var k = 0; k < PEGS; k++) setHole(row.pegs[k], code ? code[k] : null, editable);
           for (k = 0; k < PEGS; k++) row.fbs[k].className = fb ? (k < fb.b ? 'b' : k < fb.b + fb.w ? 'w' : '') : '';
         }
+        /* A tap on a marble in the row being filled takes it out again. */
         board.onclick = function (ev) {
           var t = ev.target;
-          if (!t.classList || !t.classList.contains('edit')) return;
+          while (t && t !== board && !(t.classList && t.classList.contains('mm-hole'))) t = t.parentNode;
+          if (!t || t === board || !t.classList.contains('edit')) return;
           var k = +t.dataset.k;
-          if (k < input.length) { input.splice(k, 1); render(); }
+          if (k < input.length) { input.splice(k, 1); api.sound('move'); render(); }
         };
         function render() {
           if (!view || !info) return;
@@ -204,19 +224,13 @@
             fillRow(row, g ? g.g : isInput ? input : null, g || null, isInput);
             row.el.classList.toggle('current', !ov && i === n && v.codeSet);
           }
-          // The secret row shows the code to the maker and to everyone at the end, otherwise question marks or the input.
+          // The secret holes show the code to the maker and to everyone at the end; the lid stays shut for the breaker.
           var secret = v.code, showInput = editing && r === 'make';
-          secretRow.innerHTML = '';
-          for (var k = 0; k < PEGS; k++) {
-            var pg = document.createElement('div'), c = showInput ? input[k] : secret ? secret[k] : null;
-            pg.className = 'mm-peg' + (c == null ? ' empty' : '') + (showInput ? ' edit' : '') + (!secret && !showInput && v.codeSet ? ' unknown' : '');
-            pg.dataset.k = k;
-            if (c != null) { pg.style.background = PALETTE[c]; pg.title = api.t(COLOR_KEYS[c]); }
-            if (showInput) pg.onclick = function (ev) { var kk = +ev.currentTarget.dataset.k; if (kk < input.length) { input.splice(kk, 1); render(); } };
-            secretRow.appendChild(pg);
-          }
+          for (var k = 0; k < PEGS; k++) setHole(secretHoles[k], showInput ? input[k] : secret ? secret[k] : null, showInput);
+          lid.classList.toggle('open', showInput || !!secret);
+          secretRow.classList.toggle('current', showInput);
           secretLabel.textContent = ov ? api.t('codeWas') : api.t('secret');
-          palette.style.display = editing ? '' : 'none'; bar.style.display = editing ? '' : 'none';
+          tray.style.display = editing ? '' : 'none'; bar.style.display = editing ? '' : 'none';
           randomBtn.style.display = r === 'make' ? '' : 'none';
           goBtn.textContent = api.t(r === 'make' ? 'setCode' : 'guess');
           var text;
@@ -227,24 +241,37 @@
           hint.textContent = text;
         }
         var style = document.createElement('style');
-        style.textContent = '.mm-wrap{max-width:420px;margin:0 auto}' +
-          '.mm-secret{background:rgba(0,0,0,.25);border-radius:12px;padding:8px 10px;margin-bottom:10px}.mm-label{font-size:12px;opacity:.7;margin-bottom:4px}' +
-          '.mm-board{background:#5d4037;border-radius:14px;padding:8px;box-shadow:inset 0 0 0 3px #3e2723,0 8px 24px rgba(0,0,0,.35)}' +
-          '.mm-row{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:8px;position:relative}.mm-board .mm-row.current{background:rgba(255,255,255,.12)}' +
-          '.mm-peg{width:34px;height:34px;border-radius:50%;flex:0 0 auto;box-shadow:inset -3px -4px 0 rgba(0,0,0,.25),inset 2px 3px 0 rgba(255,255,255,.3),0 1px 2px rgba(0,0,0,.4);animation:mmPop .2s ease-out}' +
-          '.mm-peg.empty{background:rgba(0,0,0,.35);box-shadow:inset 0 2px 4px rgba(0,0,0,.6);animation:none}.mm-peg.edit{cursor:pointer;outline:2px dashed rgba(255,255,255,.35);outline-offset:2px}' +
-          '.mm-peg.unknown::after{content:"?";display:block;text-align:center;line-height:34px;font-weight:700;opacity:.6}' +
-          '.mm-fb{display:grid;grid-template-columns:repeat(2,12px);gap:3px;margin-left:auto;padding:4px;background:rgba(0,0,0,.25);border-radius:6px}' +
-          '.mm-fb i{display:block;width:12px;height:12px;border-radius:50%;background:rgba(0,0,0,.35);box-shadow:inset 0 1px 2px rgba(0,0,0,.6)}.mm-fb i.b{background:#111;box-shadow:0 0 0 1px rgba(255,255,255,.3)}.mm-fb i.w{background:#f5f5f5}' +
-          '.mm-num{font-size:11px;opacity:.5;width:16px;text-align:right}' +
-          '.mm-palette{display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap}' +
-          '.mm-swatch{width:40px;height:40px;border-radius:50%;border:3px solid rgba(255,255,255,.5);cursor:pointer;box-shadow:inset -3px -4px 0 rgba(0,0,0,.25),0 2px 4px rgba(0,0,0,.4)}.mm-swatch:hover{transform:scale(1.1)}' +
+        style.textContent = '.mm-wrap{max-width:440px;margin:0 auto}' +
+          '.mm-board{padding:8px 8px 6px;border-radius:4px}' +
+          '.mm-row{display:flex;align-items:center;gap:8px;padding:3px 6px;border-radius:8px;margin:1px 0;transition:background .3s}' +
+          '.mm-row.current{background:rgba(255,235,190,.2);box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}' +
+          '.mm-num{width:18px;flex:0 0 auto;text-align:right;font-size:11px;font-weight:700;color:rgba(0,0,0,.6);text-shadow:0 1px 0 rgba(255,255,255,.28)}' +
+          '.mm-holes{display:flex;gap:8px}' +
+          '.mm-hole{position:relative;width:var(--peg);height:var(--peg);border-radius:50%;flex:0 0 auto}' +
+          '.mm-hole::before{content:"";position:absolute;left:21%;top:21%;width:58%;height:58%;border-radius:50%;background:radial-gradient(circle at 50% 35%,#1a0d05 0,#3a2212 60%,#4d2f19 100%);box-shadow:inset 0 2px 3px rgba(0,0,0,.95),0 1px 0 rgba(255,255,255,.22)}' +
+          '.mm-hole.edit{cursor:pointer}.mm-hole.edit::after{content:"";position:absolute;left:-3px;top:-3px;right:-3px;bottom:-3px;border-radius:50%;box-shadow:0 0 0 2px rgba(255,255,255,.5)}' +
+          '.mm-hole svg{position:absolute;left:-12%;top:-15%;width:124%;height:124%;overflow:visible}' +
+          '.mm-hole.filled svg{animation:mmPop .22s ease-out}' +
+          '.mm-fb{display:grid;grid-template-columns:repeat(2,var(--pin));gap:3px;margin-left:auto;padding:4px;border-radius:6px;background:rgba(0,0,0,.22);box-shadow:inset 0 1px 2px rgba(0,0,0,.6),0 1px 0 rgba(255,255,255,.14)}' +
+          '.mm-fb i{display:block;width:var(--pin);height:var(--pin);border-radius:50%;background:radial-gradient(circle at 50% 40%,#160b04 0,#30190c 65%,#3f2410 100%);box-shadow:inset 0 1px 2px rgba(0,0,0,.95)}' +
+          '.mm-fb i.b{background:radial-gradient(circle at 35% 30%,#9a9a9a 0,#2c2c2c 40%,#000 100%);box-shadow:0 1px 2px rgba(0,0,0,.8);animation:mmPop .25s ease-out}' +
+          '.mm-fb i.w{background:radial-gradient(circle at 35% 30%,#fff 0,#ececec 40%,#9a9a9a 100%);box-shadow:0 1px 2px rgba(0,0,0,.8);animation:mmPop .25s ease-out}' +
+          '.mm-srow{margin-bottom:8px;padding-bottom:9px;border-bottom:2px solid rgba(0,0,0,.3);box-shadow:0 1px 0 rgba(255,255,255,.14);border-radius:8px 8px 0 0}' +
+          '.mm-lidwrap{position:relative;perspective:420px}' +
+          '.mm-lid{position:absolute;left:-7px;top:-6px;right:-7px;bottom:-6px;border-radius:7px;transform-origin:50% 0;transition:transform .9s cubic-bezier(.3,.7,.2,1);box-shadow:0 3px 6px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.25),inset 0 -2px 0 rgba(0,0,0,.4)}' +
+          '.mm-lid i{position:absolute;left:50%;bottom:4px;width:12px;height:6px;margin-left:-6px;border-radius:3px;background:linear-gradient(#f3d36b,#9c7a1e);box-shadow:0 1px 1px rgba(0,0,0,.6)}' +
+          '.mm-lid.open{transform:rotateX(-112deg)}' +
+          '.mm-label{margin-left:auto;font-size:11px;font-weight:700;color:rgba(0,0,0,.62);text-shadow:0 1px 0 rgba(255,255,255,.28);text-align:right;line-height:1.2}' +
+          '.mm-tray{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:12px auto 0;padding:8px 10px;border-radius:14px;box-shadow:inset 0 3px 8px rgba(0,0,0,.65),0 1px 0 rgba(255,255,255,.12),0 6px 16px rgba(0,0,0,.35)}' +
+          '.mm-swatch{width:44px;height:44px;padding:0;border:0;background:none;cursor:pointer;line-height:0;border-radius:50%}.mm-swatch svg{overflow:visible}.mm-swatch:active{transform:translateY(2px)}' +
           '.mm-bar{display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:wrap}' +
-          '.mm-btn{font:inherit;font-size:14px;padding:8px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:inherit;cursor:pointer}.mm-btn:hover{background:rgba(255,255,255,.2)}' +
+          '.mm-btn{font:inherit;font-size:14px;font-weight:600;min-height:42px;padding:8px 16px;border-radius:10px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.12);color:inherit;cursor:pointer}.mm-btn:active{background:rgba(255,255,255,.25)}' +
           '.mm-hint{text-align:center;margin-top:10px;font-size:14px;opacity:.85;min-height:18px}.mm-legend{text-align:center;margin-top:6px;font-size:12px;opacity:.55}' +
-          '@keyframes mmPop{from{transform:scale(.4)}to{transform:scale(1)}}' +
-          '@media (max-width:360px){.mm-peg{width:28px;height:28px}.mm-peg.unknown::after{line-height:28px}}';
+          '@keyframes mmPop{from{transform:scale(.4)}to{transform:scale(1)}}';
         el.appendChild(style);
+        var onResize = function () { layout(); };
+        window.addEventListener('resize', onResize);
+        layout();
         return {
           update: function (v, inf) {
             var roleBefore = view ? role() : null, youBefore = view ? view.you : null;
@@ -257,7 +284,7 @@
               if (e.e === 'code') api.sound('turn');
             });
           },
-          destroy: function () { el.innerHTML = ''; }
+          destroy: function () { window.removeEventListener('resize', onResize); el.innerHTML = ''; }
         };
       }
     }

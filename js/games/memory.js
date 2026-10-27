@@ -120,16 +120,23 @@
     },
     ui: {
       mount: function (el, api) {
-        var scoreBar = document.createElement('div'); scoreBar.className = 'me-scores';
+        /* Cards on a felt table in a wooden frame: kit card backs, faces with a thin inner frame and a big picture, a
+           3D flip on turning, and found pairs flying to the owner's pile beside the table (above it on a phone). */
+        var BACK = '#23508f';
+        var layoutEl = document.createElement('div'); layoutEl.className = 'me-layout';
+        var piles = document.createElement('div'); piles.className = 'me-piles';
+        var table = document.createElement('div'); table.className = 'me-table gfx-felt gfx-frame';
         var grid = document.createElement('div'); grid.className = 'me-grid';
+        table.appendChild(grid);
         var hint = document.createElement('div'); hint.className = 'me-hint';
-        el.appendChild(scoreBar); el.appendChild(grid); el.appendChild(hint);
-        var cards = [], view = null, info = null;
+        layoutEl.appendChild(piles); layoutEl.appendChild(table);
+        el.appendChild(layoutEl); el.appendChild(hint);
+        var cards = [], view = null, info = null, pileEls = [], holdUp = {}, timers = [], cw = 48;
         function build(count) {
           grid.innerHTML = ''; cards = [];
           for (var i = 0; i < count; i++) {
             var c = document.createElement('div'); c.className = 'me-card'; c.dataset.i = i;
-            c.innerHTML = '<div class="me-inner"><div class="me-face me-back"></div><div class="me-face me-front"></div></div>';
+            c.innerHTML = '<div class="me-slot"></div><div class="me-inner"><div class="me-face me-back">' + Gfx.cardBack(60, BACK) + '</div><div class="me-face me-front"><div class="me-frame"></div><span class="me-pic"></span></div></div>';
             grid.appendChild(c); cards.push(c);
           }
         }
@@ -142,33 +149,61 @@
           if (!view.pending && view.open.indexOf(i) >= 0) { api.toast(api.t('notOpen')); return; }
           api.act({ flip: i });
         };
-        function columns(count) {
-          var w = el.clientWidth || 360;
-          if (w < 560) return 6;
-          return count === 48 ? 8 : 10;
+        function layout(count) {
+          var w = el.clientWidth || 360, wide = w >= 640;
+          layoutEl.classList.toggle('wide', wide);
+          var cols = !wide ? 6 : count === 48 ? 8 : 10;
+          grid.style.gridTemplateColumns = 'repeat(' + cols + ',1fr)';
+          cw = Math.max(30, Math.floor(((grid.clientWidth || 300) - (cols - 1) * 6) / cols));
+          grid.style.setProperty('--cw', cw + 'px');
+        }
+        function pile(p, v, ov) {
+          var d = document.createElement('div'); d.className = 'me-pile' + (!ov && v.turn === p ? ' turn' : '') + (ov && ov.places[p] === 1 ? ' top' : '');
+          d.style.setProperty('--pc', info.colors[p]);
+          var stack = document.createElement('div'); stack.className = 'me-stack' + (v.scores[p] ? '' : ' empty');
+          var n = Math.min(v.scores[p], 4), html = '';
+          for (var k = 0; k < n; k++) html += '<span style="left:' + (k * 3) + 'px;top:' + (-k * 3) + 'px">' + Gfx.cardBack(40, info.colors[p]) + '</span>';
+          stack.innerHTML = html;
+          var count = document.createElement('b'); count.className = 'me-count'; count.textContent = api.t(v.scores[p] === 1 ? 'pair' : 'pairs', v.scores[p]);
+          var name = document.createElement('span'); name.className = 'me-name'; name.textContent = info.names[p];
+          d.appendChild(stack); d.appendChild(count); d.appendChild(name);
+          return { el: d, stack: stack };
+        }
+        /* A found card flies from its place on the table to the owner's pile. */
+        function fly(i, p) {
+          var c = cards[i], target = pileEls[p];
+          if (!c || !target || !view) return;
+          var from = c.getBoundingClientRect(), to = target.stack.getBoundingClientRect();
+          if (!from.width || !to.width) return;
+          var g = document.createElement('div'); g.className = 'me-fly';
+          g.style.left = from.left + 'px'; g.style.top = from.top + 'px'; g.style.width = from.width + 'px'; g.style.height = from.height + 'px';
+          g.style.setProperty('--cw', cw + 'px');
+          g.innerHTML = '<div class="me-face me-front"><div class="me-frame"></div><span class="me-pic">' + (view.cards[i] || '') + '</span></div>';
+          document.body.appendChild(g);
+          void g.offsetWidth;
+          g.style.transform = 'translate(' + (to.left - from.left) + 'px,' + (to.top - from.top) + 'px) scale(' + (to.width / from.width) + ',' + (to.height / from.height) + ') rotate(8deg)';
+          g.style.opacity = '.85';
+          timers.push(setTimeout(function () {
+            if (g.parentNode) g.parentNode.removeChild(g);
+            target.el.classList.remove('bump'); void target.el.offsetWidth; target.el.classList.add('bump');
+          }, 620));
         }
         function render() {
           if (!view || !info) return;
           var v = view, ov = G.over(v), i;
           if (cards.length !== v.cards.length) build(v.cards.length);
-          grid.style.gridTemplateColumns = 'repeat(' + columns(v.cards.length) + ',1fr)';
+          layout(v.cards.length);
           for (i = 0; i < v.cards.length; i++) {
-            var c = cards[i], val = v.cards[i], owner = v.matched[i];
+            var c = cards[i], val = v.cards[i], owner = v.matched[i], held = holdUp[i] !== undefined;
             c.classList.toggle('up', val != null);
-            c.classList.toggle('done', owner >= 0);
+            c.classList.toggle('done', owner >= 0 && !held);
+            c.classList.toggle('held', held);
             c.classList.toggle('open', owner < 0 && v.open.indexOf(i) >= 0);
-            c.querySelector('.me-front').textContent = val == null ? '' : val;
+            c.querySelector('.me-pic').textContent = val == null ? '' : val;
             c.style.setProperty('--pc', owner >= 0 ? info.colors[owner] : 'transparent');
           }
-          scoreBar.innerHTML = '';
-          for (i = 0; i < v.n; i++) {
-            var sc = document.createElement('div'); sc.className = 'me-score' + (!ov && v.turn === i ? ' turn' : '') + (ov && ov.places[i] === 1 ? ' top' : '');
-            sc.style.setProperty('--pc', info.colors[i]);
-            var dot = document.createElement('i'); sc.appendChild(dot);
-            var name = document.createElement('span'); name.textContent = info.names[i]; sc.appendChild(name);
-            var num = document.createElement('b'); num.textContent = api.t(v.scores[i] === 1 ? 'pair' : 'pairs', v.scores[i]); sc.appendChild(num);
-            scoreBar.appendChild(sc);
-          }
+          piles.innerHTML = ''; pileEls = [];
+          for (i = 0; i < v.n; i++) { var pe = pile(i, v, ov); piles.appendChild(pe.el); pileEls.push(pe); }
           var text;
           if (ov) text = ov.winner < 0 ? api.t('tie') : ov.winner === info.me ? api.t('youWin') : api.t('wins', info.names[ov.winner]);
           else if (info.canAct) text = v.open.length === 1 && !v.pending ? api.t('second') : api.t('flipHint');
@@ -176,36 +211,60 @@
           hint.textContent = text;
         }
         var style = document.createElement('style');
-        style.textContent = '.me-scores{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:10px}' +
-          '.me-score{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.08);font-size:13px;border:2px solid transparent}' +
-          '.me-score.turn{border-color:var(--pc);background:rgba(255,255,255,.14)}.me-score.top{box-shadow:0 0 0 2px #ffd54f}' +
-          '.me-score i{width:12px;height:12px;border-radius:50%;background:var(--pc);display:inline-block}.me-score b{opacity:.85}' +
-          '.me-grid{display:grid;gap:6px;max-width:720px;margin:0 auto}' +
-          '.me-card{aspect-ratio:3/4;perspective:600px;cursor:pointer}' +
-          '.me-inner{position:relative;width:100%;height:100%;transition:transform .45s cubic-bezier(.4,.2,.2,1);transform-style:preserve-3d}' +
-          '.me-card.up .me-inner{transform:rotateY(180deg)}' +
-          '.me-face{position:absolute;inset:0;border-radius:10px;backface-visibility:hidden;-webkit-backface-visibility:hidden;display:flex;align-items:center;justify-content:center}' +
-          '.me-back{background:#3949ab;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.12) 0 6px,transparent 6px 12px);box-shadow:inset 0 0 0 3px rgba(255,255,255,.35),0 2px 6px rgba(0,0,0,.4)}' +
-          '.me-card:hover .me-back{filter:brightness(1.15)}' +
-          '.me-front{background:#fdfcf7;color:#222;transform:rotateY(180deg);font-size:clamp(20px,5vw,40px);box-shadow:inset 0 0 0 3px var(--pc),0 2px 6px rgba(0,0,0,.4)}' +
-          '.me-card.done{cursor:default}.me-card.done .me-front{opacity:.75}.me-card.open .me-front{box-shadow:inset 0 0 0 3px #ffd54f,0 2px 6px rgba(0,0,0,.4)}' +
-          '.me-card.won .me-inner{animation:mePulse .5s ease-out}@keyframes mePulse{0%{transform:rotateY(180deg) scale(1)}50%{transform:rotateY(180deg) scale(1.15)}100%{transform:rotateY(180deg) scale(1)}}' +
+        style.textContent = '.me-layout{display:flex;flex-direction:column;gap:10px}.me-layout.wide{flex-direction:row;align-items:flex-start;gap:14px}' +
+          '.me-piles{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}.me-layout.wide .me-piles{flex-direction:column;flex:0 0 96px;flex-wrap:nowrap}' +
+          '.me-pile{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 8px 6px;border-radius:12px;background:rgba(255,255,255,.06);border:2px solid transparent;min-width:76px;transition:box-shadow .3s,background .3s}' +
+          '.me-pile.turn{border-color:var(--pc);background:rgba(255,255,255,.12);box-shadow:0 0 12px var(--pc)}.me-pile.top .me-count{box-shadow:0 0 0 2px #ffd54f}' +
+          '.me-pile.bump{animation:meBump .3s ease-out}@keyframes meBump{50%{transform:scale(1.08)}}' +
+          '.me-stack{position:relative;width:40px;height:56px;margin:4px 0 2px}.me-stack span{position:absolute;display:block;line-height:0}.me-stack svg{width:40px;height:56px;overflow:visible}' +
+          '.me-stack.empty{border:2px dashed rgba(255,255,255,.3);border-radius:5px;box-sizing:border-box}' +
+          '.me-count{font-weight:800;font-size:13px;color:var(--pc);background:rgba(0,0,0,.38);border-radius:999px;padding:2px 10px;white-space:nowrap}' +
+          '.me-name{font-size:12px;opacity:.85;max-width:88px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+          '.me-table{flex:1 1 auto;min-width:0;padding:10px;border-radius:6px}' +
+          '.me-grid{display:grid;gap:6px}' +
+          '.me-card{position:relative;aspect-ratio:5/7;perspective:700px;cursor:pointer}' +
+          '.me-slot{position:absolute;left:3px;top:3px;right:3px;bottom:3px;border-radius:7px;background:rgba(0,0,0,.2);box-shadow:inset 0 1px 3px rgba(0,0,0,.45)}' +
+          '.me-inner{position:absolute;left:0;top:0;right:0;bottom:0;transition:transform .5s cubic-bezier(.4,.2,.2,1);transform-style:preserve-3d}' +
+          '.me-card.up .me-inner{transform:rotateY(180deg)}.me-card.done .me-inner{visibility:hidden}.me-card.done{cursor:default}' +
+          '.me-face{position:absolute;left:0;top:0;right:0;bottom:0;border-radius:7px;backface-visibility:hidden;-webkit-backface-visibility:hidden}' +
+          '.me-back svg{width:100%;height:100%;display:block;overflow:visible}' +
+          '.me-front{transform:rotateY(180deg);background:#fdfbf5;box-shadow:0 2px 5px rgba(0,0,0,.45),inset 0 0 0 1px #cfc8b8;display:flex;align-items:center;justify-content:center;transition:box-shadow .3s}' +
+          '.me-frame{position:absolute;left:5px;top:5px;right:5px;bottom:5px;border:1px solid #b8ad96;border-radius:4px;pointer-events:none}' +
+          '.me-pic{font-size:calc(var(--cw) * .52);line-height:1}' +
+          '.me-card.open .me-front{box-shadow:0 0 0 3px #ffd54f,0 2px 5px rgba(0,0,0,.45)}' +
+          '.me-card.held .me-front{box-shadow:0 0 0 3px var(--pc),0 0 14px var(--pc)}' +
+          '.me-fly{position:fixed;z-index:30;pointer-events:none;transition:transform .6s cubic-bezier(.5,.1,.3,1),opacity .6s;transform-origin:0 0;perspective:700px}' +
+          '.me-fly .me-front{transform:none;border-radius:7px}' +
           '.me-hint{text-align:center;margin-top:12px;font-size:14px;opacity:.85;min-height:18px}';
         el.appendChild(style);
+        var onResize = function () { render(); };
+        window.addEventListener('resize', onResize);
         return {
           update: function (v, inf) {
             view = v; info = inf;
+            var evs = inf.events || [];
+            evs.forEach(function (e) { if (e.e === 'match') e.cards.forEach(function (i) { holdUp[i] = e.p; }); });
             render();
-            (inf.events || []).forEach(function (e) {
+            evs.forEach(function (e) {
               if (e.e === 'flip') api.sound('card');
               if (e.e === 'match') {
-                e.cards.forEach(function (i) { var c = cards[i]; if (c) { c.classList.remove('won'); void c.offsetWidth; c.classList.add('won'); } });
                 api.sound('capture');
                 if (e.p !== inf.me) api.toast(api.t('matchOf', inf.names[e.p]));
+                timers.push(setTimeout(function () {
+                  e.cards.forEach(function (i) { delete holdUp[i]; });
+                  render();
+                  e.cards.forEach(function (i) { fly(i, e.p); });
+                }, 750));
               }
             });
           },
-          destroy: function () { el.innerHTML = ''; }
+          destroy: function () {
+            window.removeEventListener('resize', onResize);
+            timers.forEach(function (t) { clearTimeout(t); });
+            var flying = document.querySelectorAll('.me-fly');
+            for (var k = 0; k < flying.length; k++) flying[k].parentNode.removeChild(flying[k]);
+            el.innerHTML = '';
+          }
         };
       }
     }

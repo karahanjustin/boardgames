@@ -1,6 +1,6 @@
 /* Kniffel / Yahtzee: five dice, up to three rolls per turn, thirteen fields on the sheet. The upper section pays
    a bonus of 35 from 63 points, a second Kniffel pays 50 and works as a joker. Rules, an expected value AI over
-   the rolls of a turn, and a DOM sheet with dice drawn in CSS. */
+   the rolls of a turn, a felt dice pad and a paper score sheet drawn with the kit. */
 (function (root) {
   'use strict';
   var UPPER = ['ones', 'twos', 'threes', 'fours', 'fives', 'sixes'];
@@ -121,7 +121,7 @@
     strings: {
       de: {
         roll: 'Würfeln (noch {0})', rolled: 'Keine Würfe mehr: trag ein Feld ein', keepHint: 'Würfel antippen zum Behalten, dann würfeln oder ein Feld eintragen', firstHint: 'Würfle zuerst',
-        keepAll: 'Alle fünf behalten? Dann trag lieber gleich ein Feld ein', round: 'Runde {0} von 13', upperSum: 'Summe oben', bonus: 'Bonus ab 63', lowerSum: 'Summe unten', kBonus: 'Kniffel-Bonus', total: 'Gesamt',
+        keepAll: 'Alle fünf behalten? Dann trag lieber gleich ein Feld ein', round: 'Runde {0} von 13', upperPart: 'Oberer Teil', lowerPart: 'Unterer Teil', upperSum: 'Summe oben', bonus: 'Bonus ab 63', lowerSum: 'Summe unten', kBonus: 'Kniffel-Bonus', total: 'Gesamt',
         ones: 'Einser', twos: 'Zweier', threes: 'Dreier', fours: 'Vierer', fives: 'Fünfer', sixes: 'Sechser',
         three: 'Dreierpasch', four: 'Viererpasch', full: 'Full House', small: 'Kleine Straße', large: 'Große Straße', kniffel: 'Kniffel', chance: 'Chance',
         kniffelMade: 'Kniffel!', result: '{0}: {1} Punkte',
@@ -129,7 +129,7 @@
       },
       en: {
         roll: 'Roll ({0} left)', rolled: 'No rolls left: write a box', keepHint: 'Tap dice to keep them, then roll or write a box', firstHint: 'Roll first',
-        keepAll: 'Keeping all five? Then write a box instead', round: 'Round {0} of 13', upperSum: 'Upper total', bonus: 'Bonus from 63', lowerSum: 'Lower total', kBonus: 'Kniffel bonus', total: 'Total',
+        keepAll: 'Keeping all five? Then write a box instead', round: 'Round {0} of 13', upperPart: 'Upper section', lowerPart: 'Lower section', upperSum: 'Upper total', bonus: 'Bonus from 63', lowerSum: 'Lower total', kBonus: 'Kniffel bonus', total: 'Total',
         ones: 'Aces', twos: 'Twos', threes: 'Threes', fours: 'Fours', fives: 'Fives', sixes: 'Sixes',
         three: 'Three of a kind', four: 'Four of a kind', full: 'Full house', small: 'Small straight', large: 'Large straight', kniffel: 'Kniffel', chance: 'Chance',
         kniffelMade: 'Kniffel!', result: '{0}: {1} points',
@@ -204,38 +204,84 @@
     },
     ui: {
       mount: function (el, api) {
-        var wrap = document.createElement('div'); wrap.className = 'kn';
-        var top = document.createElement('div'); top.className = 'kn-top';
-        var diceEl = document.createElement('div'); diceEl.className = 'kn-dice';
-        var rollBtn = document.createElement('button'); rollBtn.className = 'kn-roll';
-        var hint = document.createElement('div'); hint.className = 'kn-hint';
-        var table = document.createElement('div'); table.className = 'kn-sheet';
-        top.appendChild(diceEl); top.appendChild(rollBtn); wrap.appendChild(top); wrap.appendChild(hint); wrap.appendChild(table); el.appendChild(wrap);
+        var Gfx = root.Gfx;
+        function div(cls, parent) { var d = document.createElement('div'); d.className = cls; if (parent) parent.appendChild(d); return d; }
+        /* A felt dice pad in a wooden rim at the top (or at the left when there is room), the kept dice slide down
+           onto a wooden ledge, the score sheet is a printed paper block with a pen for the written scores. */
+        var wrap = div('kn', el), main = div('kn-main', wrap), left = div('kn-left', main);
+        var pad = div('kn-pad gfx-frame gfx-felt', left), ledge = div('kn-ledge gfx-wood', pad), diceEl = div('kn-dice', pad);
+        var rollBtn = document.createElement('button'); rollBtn.className = 'kn-roll'; left.appendChild(rollBtn);
+        var hint = div('kn-hint', left);
+        var sheet = div('kn-sheet gfx-paper', main), table = div('kn-table', sheet);
         var style = document.createElement('style');
-        style.textContent = '.kn{max-width:720px;margin:0 auto}.kn-top{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px;padding:8px}' +
-          '.kn-dice{display:flex;gap:8px}.kn-die{width:48px;height:48px;border-radius:10px;background:#fdfdf6;box-shadow:inset 0 -3px 0 rgba(0,0,0,.15),0 3px 8px rgba(0,0,0,.35);display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);padding:6px;box-sizing:border-box;cursor:pointer;transition:transform .15s;position:relative}' +
-          '.kn-die i{display:block;width:9px;height:9px;border-radius:50%;background:#222;margin:auto;visibility:hidden}.kn-die i.on{visibility:visible}' +
-          '.kn-die.keep{transform:translateY(-8px);box-shadow:0 0 0 3px var(--kc,#f5c542),0 6px 12px rgba(0,0,0,.4)}.kn-die.empty{opacity:.35}.kn-die.shake{animation:knshake .35s}' +
-          '@keyframes knshake{0%{transform:rotate(0)}25%{transform:rotate(-14deg)}50%{transform:rotate(12deg)}75%{transform:rotate(-6deg)}100%{transform:rotate(0)}}' +
-          '.kn-roll{padding:10px 16px;border-radius:10px;border:0;font-size:15px;font-weight:600;cursor:pointer;background:#2b7a3d;color:#fff}.kn-roll:disabled{opacity:.4;cursor:default}' +
-          '.kn-hint{text-align:center;font-size:13px;opacity:.8;min-height:18px;margin-bottom:6px}' +
-          '.kn-sheet{display:grid;gap:2px;font-size:13px;background:rgba(0,0,0,.25);padding:4px;border-radius:10px}' +
-          '.kn-row{display:contents}.kn-c{padding:5px 6px;background:rgba(255,255,255,.06);border-radius:4px;text-align:center;min-height:18px;white-space:nowrap}.kn-c.lbl{text-align:left}' +
-          '.kn-c.head{font-weight:700;border-bottom:3px solid var(--pc,#888)}.kn-c.head.turn{background:rgba(255,255,255,.18)}.kn-c.sum{font-weight:700;background:rgba(255,255,255,.12)}' +
-          '.kn-c.free{opacity:.55;cursor:pointer;font-style:italic}.kn-c.free:hover{opacity:1;background:rgba(255,255,255,.2)}.kn-c.free.good{opacity:.9;color:#8ef0a0}.kn-c.set{font-weight:600}.kn-c.last{outline:2px solid #fff}' +
-          '@media (max-width:420px){.kn-c{padding:4px 3px;font-size:12px}.kn-die{width:42px;height:42px}}';
+        style.textContent = '.kn{width:0;min-width:100%;margin:0 auto;user-select:none;-webkit-user-select:none}.kn-main{display:flex;flex-direction:column;gap:14px}' +
+          '.kn.wide .kn-main{flex-direction:row;align-items:flex-start}.kn.wide .kn-left{flex:0 0 290px;position:sticky;top:70px}.kn-sheet{flex:1;min-width:0}' +
+          '.kn-pad{position:relative;border-radius:6px;overflow:hidden}.kn-ledge{position:absolute;left:0;right:0;bottom:0;box-shadow:inset 0 3px 6px rgba(0,0,0,.55),0 -2px 4px rgba(0,0,0,.4)}' +
+          '.kn-ledge:before{content:"";position:absolute;left:4%;right:4%;top:18%;bottom:18%;border-radius:4px;background:rgba(0,0,0,.28);box-shadow:inset 0 2px 5px rgba(0,0,0,.6)}' +
+          '.kn-dice{position:absolute;left:0;top:0;width:100%;height:100%}' +
+          '.kn-die{position:absolute;left:0;top:0;cursor:pointer;transition:transform .3s cubic-bezier(.3,1.3,.5,1);will-change:transform}.kn.fast .kn-die{transition:none}' +
+          '.kn-die .gfx{display:block;transition:filter .2s}.kn-die.keep .gfx{filter:drop-shadow(0 0 4px var(--kc,#f5c542))}' +
+          '.kn-die.tumble .gfx{animation:kntumble .5s ease-out}.kn-die.slot{opacity:.5}' +
+          '.kn-die.slot .gfx{filter:none}' +
+          '@keyframes kntumble{0%{transform:translateY(-40px) rotate(-250deg) scale(.6)}60%{transform:translateY(4px) rotate(22deg) scale(1.05)}80%{transform:translateY(-3px) rotate(-6deg)}100%{transform:none}}' +
+          '.kn-roll{display:block;width:100%;margin-top:12px;min-height:46px;padding:10px 16px;border-radius:12px;border:0;font-size:16px;font-weight:700;cursor:pointer;color:#fff;background:linear-gradient(#3f9a52,#226b33);box-shadow:0 3px 8px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.3)}' +
+          '.kn-roll:disabled{opacity:.4;cursor:default}.kn-roll:active{transform:scale(.98)}' +
+          '.kn-hint{text-align:center;font-size:13px;opacity:.85;min-height:18px;margin-top:8px}' +
+          '.kn-sheet{border-radius:3px;padding:10px 12px 14px;color:#2b3550;box-shadow:0 10px 28px rgba(0,0,0,.45),0 1px 0 rgba(255,255,255,.4) inset;background-size:300px 300px;font-family:Georgia,"Times New Roman",serif}' +
+          '.kn-table{display:grid;border:1.5px solid #4a5676;border-radius:2px}' +
+          '.kn-c{display:flex;align-items:center;justify-content:center;min-height:40px;padding:2px 6px;border-bottom:1px solid #8a93ab;border-right:1px solid #8a93ab;font-size:14px;white-space:nowrap;position:relative;overflow:hidden}' +
+          '.kn-c.lbl{justify-content:flex-start;text-align:left;overflow:hidden;text-overflow:ellipsis;display:block;line-height:36px}.kn-c:nth-last-child(1){border-right:0}' +
+          '.kn-c.title{grid-column:1/-1;font-weight:700;font-size:17px;letter-spacing:.14em;text-transform:uppercase;justify-content:space-between;padding:4px 10px;border-bottom:2px solid #4a5676;min-height:44px}.kn-c.title small{font-size:12px;letter-spacing:0;text-transform:none;font-weight:400;opacity:.8}' +
+          '.kn-c.sec{grid-column:1/-1;justify-content:flex-start;font-weight:700;letter-spacing:.06em;background:rgba(70,86,118,.14);min-height:30px;font-size:13px;text-transform:uppercase}' +
+          '.kn-c.head{font-weight:700;min-height:40px}.kn-c.head i{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--pc);margin-right:6px;box-shadow:inset -1px -2px 0 rgba(0,0,0,.3)}' +
+          '.kn-c.cur{background:rgba(255,226,110,.42)}.kn-c.head.cur{background:rgba(255,226,110,.6)}' +
+          '.kn-c.sum{font-weight:700;min-height:30px;background:rgba(70,86,118,.07)}.kn-c.sumv{font-weight:700;min-height:30px;background:rgba(70,86,118,.07)}.kn-c.dbl{border-top:3px double #4a5676}' +
+          '.kn-c.set,.kn-c.sumv.ink{font-family:"Bradley Hand","Segoe Script","Comic Sans MS",cursive;color:#1f3b8f;font-size:19px;font-weight:700;transform:rotate(-2deg)}' +
+          '.kn-c.last:after,.kn-c.win:after{content:"";position:absolute;left:18%;right:18%;top:4px;bottom:4px;border:2px solid #1f3b8f;border-radius:50%;opacity:.75;transform:rotate(-4deg)}' +
+          '.kn-c.free{cursor:pointer;font-style:italic;color:rgba(60,70,95,.42)}.kn-c.free.good{color:rgba(31,59,143,.62)}.kn-c.free:active{background:rgba(255,226,110,.8)}' +
+          '.kn-c.taken{color:#9a7b4d;font-style:italic;font-size:12px;opacity:.8}' +
+          '@media (max-width:420px){.kn-c{padding:2px 3px;font-size:12px}.kn-c.set,.kn-c.sumv.ink{font-size:16px}.kn-c.title{font-size:14px}.kn-sheet{padding:8px 6px 10px}}';
         el.appendChild(style);
-        var PIPS = [[], [4], [0, 8], [0, 4, 8], [0, 2, 6, 8], [0, 2, 4, 6, 8], [0, 2, 3, 5, 6, 8]];
-        var view = null, info = null, keep = [false, false, false, false, false], lastTurn = -1;
-        function dieHtml(v, i, kept, empty) {
-          var h = '<div class="kn-die' + (kept ? ' keep' : '') + (empty ? ' empty' : '') + '" data-i="' + i + '">';
-          for (var k = 0; k < 9; k++) h += '<i class="' + (v && PIPS[v].indexOf(k) >= 0 ? 'on' : '') + '"></i>';
-          return h + '</div>';
+        var view = null, info = null, keep = [false, false, false, false, false], lastTurn = -1, dieEls = [], geo = null, tumbleTimer = 0, tumbleEnd = 0, i;
+        for (i = 0; i < 5; i++) { var de = div('kn-die', diceEl); de.dataset.i = i; dieEls.push(de); }
+        function fast() { return !!(root.App && root.App.fast); }
+        function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+        /* The pad geometry: five dice in a row in the rolling area, the same five columns on the ledge below. */
+        function layout() {
+          var avail = Math.max(300, wrap.clientWidth || el.clientWidth || 320), wide = avail >= 620;
+          wrap.classList.toggle('wide', wide);
+          var padW = wide ? 290 : avail, inner = padW - 20, m = 12, gap = 8, size = Math.min(66, Math.floor((inner - 2 * m - 4 * gap) / 5));
+          var rowH = size * 1.1 + 2 * m, ledgeH = size * 1.1 + 2 * m, H = rowH + ledgeH;
+          pad.style.height = H + 'px'; ledge.style.height = ledgeH + 'px';
+          var x0 = (inner - (5 * size + 4 * gap)) / 2;
+          geo = { size: size, x0: x0, gap: gap, yRoll: m + size * 0.05, yKeep: rowH + m + size * 0.05, wide: wide, avail: avail };
+        }
+        function placeDice(tumble) {
+          var v = view, g = geo, k, d, has = v.dice.length > 0;
+          for (k = 0; k < 5; k++) {
+            d = dieEls[k];
+            var kept = has && keep[k], x = g.x0 + k * (g.size + g.gap), y = kept ? g.yKeep : g.yRoll;
+            d.className = 'kn-die' + (kept ? ' keep' : '') + (has ? '' : ' slot') + (tumble && !kept ? ' tumble' : '');
+            var fresh = !d.style.transform;
+            if (fresh) d.style.transition = 'none';
+            d.style.width = g.size + 'px'; d.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+            if (fresh) (function (dd) { requestAnimationFrame(function () { dd.style.transition = ''; }); })(d);
+            d.innerHTML = has ? Gfx.die(v.dice[k], g.size) : Gfx.die(0, g.size, '#4d7a5f');
+            d.dataset.v = has ? v.dice[k] : 0;
+          }
+          if (tumble) {
+            clearInterval(tumbleTimer); tumbleEnd = Date.now() + 420;
+            tumbleTimer = setInterval(function () {
+              var done = Date.now() >= tumbleEnd, j;
+              for (j = 0; j < 5; j++) if (dieEls[j].classList.contains('tumble')) dieEls[j].innerHTML = Gfx.die(done ? +dieEls[j].dataset.v : 1 + Math.floor(Math.random() * 6), geo.size);
+              if (done) clearInterval(tumbleTimer);
+            }, 70);
+          }
         }
         diceEl.onclick = function (ev) {
           var d = ev.target.closest ? ev.target.closest('.kn-die') : null;
           if (!d || !info || !info.canAct || !view || view.rolls === 0 || view.rolls >= 3) return;
-          var i = +d.dataset.i; keep[i] = !keep[i]; render();
+          var k = +d.dataset.i; keep[k] = !keep[k]; placeDice(false);
         };
         rollBtn.onclick = function () {
           if (!info || !info.canAct || !view || view.rolls >= 3) return;
@@ -248,53 +294,62 @@
           if (!c || !info || !info.canAct || !view || view.rolls === 0) return;
           api.act({ score: c.dataset.f });
         };
-        function render() {
+        function renderSheet() {
+          var v = view, inf = info, ov = G.over(v), me = inf.canAct ? v.turn : -1, cur = ov ? -1 : v.turn, q, f;
+          var cnt = v.dice.length ? countsOf(v.dice) : null;
+          table.style.gridTemplateColumns = 'minmax(' + (geo.avail < 420 ? 84 : 110) + 'px,1.6fr) repeat(' + v.n + ',minmax(44px,1fr))';
+          var t = '<div class="kn-c title"><span>' + esc(root.I18N ? root.I18N.name(G.name) : G.name.en) + '</span><small>' + esc(api.t('round', v.round)) + '</small></div>';
+          t += '<div class="kn-c lbl head"></div>';
+          for (q = 0; q < v.n; q++) t += '<div class="kn-c head' + (cur === q ? ' cur' : '') + '" style="--pc:' + inf.colors[q] + '"><i></i>' + esc(inf.names[q]) + '</div>';
+          function row(label, fn, cls) { t += '<div class="kn-c lbl ' + (cls || '') + '">' + esc(label) + '</div>'; for (var k = 0; k < v.n; k++) t += fn(k); }
+          function fieldCell(q, field) {
+            var val = v.sheet[q][field], last = v.last && v.last.p === q && v.last.field === field, c = cur === q ? ' cur' : '';
+            if (val !== null) return '<div class="kn-c set' + c + (last ? ' last' : '') + '">' + val + '</div>';
+            if (q === me && cnt) { var joker = isJoker(cnt, v.sheet[q]), sc = scoreOf(cnt, field, joker); return '<div class="kn-c free' + c + (sc > 0 ? ' good' : '') + '" data-f="' + field + '">' + sc + '</div>'; }
+            return '<div class="kn-c' + c + '"></div>';
+          }
+          function sumCell(q, key, ink) { var tt = totals(v.sheet[q], v.bonus[q]), c = cur === q ? ' cur' : '', w = ov && key === 'total' && ov.winner === q && v.n > 1 ? ' win' : ''; return '<div class="kn-c sumv' + c + (ink ? ' ink' : '') + w + '">' + tt[key] + '</div>'; }
+          t += '<div class="kn-c sec">' + esc(api.t('upperPart')) + '</div>';
+          for (f = 0; f < UPPER.length; f++) (function (field) { row(api.t(field), function (q) { return fieldCell(q, field); }); })(UPPER[f]);
+          row(api.t('upperSum'), function (q) { return sumCell(q, 'upper', true); }, 'sum dbl');
+          row(api.t('bonus'), function (q) { return sumCell(q, 'upperBonus', totals(v.sheet[q], v.bonus[q]).upperBonus > 0); }, 'sum');
+          t += '<div class="kn-c sec">' + esc(api.t('lowerPart')) + '</div>';
+          for (f = 0; f < LOWER.length; f++) (function (field) { row(api.t(field), function (q) { return fieldCell(q, field); }); })(LOWER[f]);
+          row(api.t('kBonus'), function (q) { return sumCell(q, 'kniffelBonus', totals(v.sheet[q], v.bonus[q]).kniffelBonus > 0); }, 'sum dbl');
+          row(api.t('lowerSum'), function (q) { return sumCell(q, 'lower', true); }, 'sum');
+          row(api.t('total'), function (q) { return sumCell(q, 'total', true); }, 'sum dbl');
+          table.innerHTML = t;
+        }
+        function render(tumble) {
           if (!view) return;
-          var v = view, inf = info, ov = G.over(v), me = inf.canAct ? v.turn : -1, i, f;
-          var h = '';
-          for (i = 0; i < 5; i++) h += dieHtml(v.dice[i] || 0, i, v.dice.length && keep[i], !v.dice.length);
-          diceEl.innerHTML = h;
+          var v = view, inf = info, ov = G.over(v);
+          layout();
           if (inf.colors && v.turn >= 0) diceEl.style.setProperty('--kc', inf.colors[v.turn]);
+          placeDice(tumble);
           rollBtn.textContent = api.t('roll', 3 - v.rolls);
           rollBtn.disabled = !inf.canAct || v.rolls >= 3 || !!ov;
           hint.textContent = ov ? api.t('result', inf.names[ov.ranking[0]], ov.totals[ov.ranking[0]]) : !inf.canAct ? api.t('wait', inf.names[v.turn]) : v.rolls === 0 ? api.t('firstHint') : v.rolls >= 3 ? api.t('rolled') : api.t('keepHint');
-          var cnt = v.dice.length ? countsOf(v.dice) : null;
-          table.style.gridTemplateColumns = 'minmax(90px,1.6fr) repeat(' + v.n + ',1fr)';
-          var t = '<div class="kn-c lbl head">' + api.t('round', v.round) + '</div>';
-          for (i = 0; i < v.n; i++) t += '<div class="kn-c head' + (v.turn === i && !ov ? ' turn' : '') + '" style="--pc:' + inf.colors[i] + '">' + esc(inf.names[i]) + '</div>';
-          function row(label, fn, cls) { t += '<div class="kn-c lbl ' + (cls || '') + '">' + label + '</div>'; for (var q = 0; q < v.n; q++) t += fn(q); }
-          function fieldCell(q, field) {
-            var val = v.sheet[q][field], last = v.last && v.last.p === q && v.last.field === field;
-            if (val !== null) return '<div class="kn-c set' + (last ? ' last' : '') + '">' + val + '</div>';
-            if (q === me && cnt) { var joker = isJoker(cnt, v.sheet[q]), sc = scoreOf(cnt, field, joker); return '<div class="kn-c free' + (sc > 0 ? ' good' : '') + '" data-f="' + field + '">' + sc + '</div>'; }
-            return '<div class="kn-c"></div>';
-          }
-          for (f = 0; f < UPPER.length; f++) (function (field) { row(api.t(field), function (q) { return fieldCell(q, field); }); })(UPPER[f]);
-          row(api.t('upperSum'), function (q) { return '<div class="kn-c sum">' + totals(v.sheet[q], v.bonus[q]).upper + '</div>'; }, 'sum');
-          row(api.t('bonus'), function (q) { return '<div class="kn-c sum">' + totals(v.sheet[q], v.bonus[q]).upperBonus + '</div>'; }, 'sum');
-          for (f = 0; f < LOWER.length; f++) (function (field) { row(api.t(field), function (q) { return fieldCell(q, field); }); })(LOWER[f]);
-          row(api.t('kBonus'), function (q) { return '<div class="kn-c sum">' + totals(v.sheet[q], v.bonus[q]).kniffelBonus + '</div>'; }, 'sum');
-          row(api.t('lowerSum'), function (q) { return '<div class="kn-c sum">' + totals(v.sheet[q], v.bonus[q]).lower + '</div>'; }, 'sum');
-          row(api.t('total'), function (q) { return '<div class="kn-c sum">' + totals(v.sheet[q], v.bonus[q]).total + '</div>'; }, 'sum');
-          table.innerHTML = t;
+          renderSheet();
         }
-        function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+        var onResize = function () { if (view) render(false); };
+        window.addEventListener('resize', onResize);
+        /* The first update may run before the panel has its final width: measure again on the next frame and on every resize of the panel. */
+        var ro = null, raf = requestAnimationFrame(function () { if (view && geo && Math.max(300, wrap.clientWidth || 0) !== geo.avail) render(false); });
+        if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(function () { if (view && geo && Math.max(300, wrap.clientWidth || 0) !== geo.avail) render(false); }); ro.observe(el); }
         return {
           update: function (v, inf) {
             view = v; info = inf;
+            wrap.classList.toggle('fast', fast());
             if (v.turn !== lastTurn || v.rolls === 0) { keep = [false, false, false, false, false]; lastTurn = v.turn; }
+            var tumble = false;
             (inf.events || []).forEach(function (e) {
-              if (e.e === 'dice') { keep = e.kept.slice(); api.sound('dice'); }
+              if (e.e === 'dice') { keep = e.kept.slice(); api.sound('dice'); tumble = !fast(); }
               if (e.e === 'kniffel') api.toast(api.t('kniffelMade'));
               if (e.e === 'score') api.sound('move');
             });
-            render();
-            if ((inf.events || []).some(function (e) { return e.e === 'dice'; })) {
-              var ds = diceEl.querySelectorAll('.kn-die');
-              for (var i = 0; i < ds.length; i++) if (!keep[i]) ds[i].classList.add('shake');
-            }
+            render(tumble);
           },
-          destroy: function () { el.innerHTML = ''; }
+          destroy: function () { clearInterval(tumbleTimer); cancelAnimationFrame(raf); if (ro) ro.disconnect(); window.removeEventListener('resize', onResize); el.innerHTML = ''; }
         };
       }
     }

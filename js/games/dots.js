@@ -153,20 +153,30 @@
     },
     ui: {
       mount: function (el, api) {
+        /* A sheet of squared paper: light pencil squares, ink dots, the lines as felt pen strokes in the player
+           colours with a little wobble, a light wash with the owner's initial in every closed box, and a glow under
+           the last line drawn. */
         var wrap = document.createElement('div'); wrap.className = 'db-wrap';
         var scores = document.createElement('div'); scores.className = 'db-scores';
-        var canvas = document.createElement('canvas'); canvas.className = 'db-canvas';
+        var canvas = document.createElement('canvas'); canvas.className = 'db-canvas gfx-paper';
         var hint = document.createElement('div'); hint.className = 'db-hint';
         wrap.appendChild(scores); wrap.appendChild(canvas); wrap.appendChild(hint); el.appendChild(wrap);
         var style = document.createElement('style');
-        style.textContent = '.db-wrap{max-width:min(100%,560px);margin:0 auto}.db-canvas{display:block;width:100%;border-radius:14px;background:#f4efe3;box-shadow:0 8px 24px rgba(0,0,0,.35);touch-action:manipulation;cursor:pointer}' +
-          '.db-scores{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:10px}.db-score{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.08);font-size:14px}' +
-          '.db-score i{width:14px;height:14px;border-radius:50%;background:var(--pc);display:inline-block}.db-score.on{box-shadow:0 0 0 2px var(--pc)}.db-hint{text-align:center;margin-top:10px;font-size:14px;opacity:.8}';
+        style.textContent = '.db-wrap{max-width:min(100%,560px);margin:0 auto}' +
+          '.db-canvas{display:block;width:100%;border-radius:3px;box-shadow:0 10px 26px rgba(0,0,0,.45),0 0 0 1px rgba(0,0,0,.2),inset 0 0 40px rgba(120,90,40,.08);touch-action:manipulation;cursor:pointer}' +
+          '.db-scores{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:10px}' +
+          '.db-score{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.08);font-size:14px;border:2px solid transparent}' +
+          '.db-score i{width:20px;height:7px;border-radius:4px;background:var(--pc);display:inline-block;transform:rotate(-8deg);opacity:.9}' +
+          '.db-score.on{border-color:var(--pc);background:rgba(255,255,255,.14);box-shadow:0 0 10px var(--pc)}' +
+          '.db-hint{text-align:center;margin-top:10px;font-size:14px;opacity:.8}';
         el.appendChild(style);
         var view = null, info = null, geo = null, hover = null;
+        var PEN = '"Marker Felt","Chalkboard SE","Comic Sans MS","Segoe Print",cursive';
+        /* A deterministic jitter in 0..1 from a seed, so the wobble of a line stays the same on every redraw. */
+        function jit(seed) { var x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453; return x - Math.floor(x); }
         function layout(v) {
           var cssW = Math.max(280, Math.min(el.clientWidth || 320, 560)), dpr = window.devicePixelRatio || 1;
-          var pad = cssW * 0.06, cell = (cssW - 2 * pad) / v.w, cssH = pad * 2 + cell * v.h;
+          var pad = cssW * 0.08, cell = (cssW - 2 * pad) / v.w, cssH = pad * 2 + cell * v.h;
           canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr);
           canvas.style.height = cssH + 'px';
           geo = { pad: pad, cell: cell, dpr: dpr, w: cssW, h: cssH };
@@ -194,35 +204,71 @@
         };
         canvas.onmousemove = function (ev) { if (!info || !info.canAct) { hover = null; return; } var q = pos(ev); var a = edgeAt(q.x, q.y); hover = a && !isDrawn(view, a) ? a : null; draw(); };
         canvas.onmouseleave = function () { hover = null; draw(); };
+        /* The two ends of an edge in canvas coordinates. */
+        function ends(a) {
+          var g = geo, v = view, r, c;
+          if (a.h != null) { r = Math.floor(a.h / v.w); c = a.h % v.w; return [g.pad + c * g.cell, g.pad + r * g.cell, g.pad + (c + 1) * g.cell, g.pad + r * g.cell]; }
+          r = Math.floor(a.v / (v.w + 1)); c = a.v % (v.w + 1);
+          return [g.pad + c * g.cell, g.pad + r * g.cell, g.pad + c * g.cell, g.pad + (r + 1) * g.cell];
+        }
+        /* A felt pen stroke: a slightly bowed line with rounded ends, drawn twice like a marker that was gone over. */
+        function penStroke(ctx, a, color, alpha, widthK) {
+          var e = ends(a), g = geo, seed = a.h != null ? a.h * 2 + 1 : a.v * 2 + 2;
+          var mx = (e[0] + e[2]) / 2, my = (e[1] + e[3]) / 2, bow = (jit(seed) - 0.5) * g.cell * 0.09;
+          var horizontal = e[1] === e[3], cx = horizontal ? mx : mx + bow, cy = horizontal ? my + bow : my;
+          var o1 = (jit(seed + 11) - 0.5) * g.cell * 0.05, o2 = (jit(seed + 23) - 0.5) * g.cell * 0.05;
+          ctx.strokeStyle = color; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+          ctx.globalAlpha = alpha; ctx.lineWidth = Math.max(3, g.cell * 0.13) * (widthK || 1);
+          ctx.beginPath(); ctx.moveTo(e[0] + (horizontal ? -1 : o1), e[1] + (horizontal ? o1 : -1)); ctx.quadraticCurveTo(cx, cy, e[2] + (horizontal ? 1 : o2), e[3] + (horizontal ? o2 : 1)); ctx.stroke();
+          ctx.globalAlpha = alpha * 0.55; ctx.lineWidth = ctx.lineWidth * 0.5;
+          ctx.beginPath(); ctx.moveTo(e[0] + (horizontal ? 2 : o1 * 0.5), e[1] + (horizontal ? o1 * 0.5 : 2)); ctx.quadraticCurveTo(cx, cy, e[2] - (horizontal ? 2 : -o2 * 0.5), e[3] - (horizontal ? -o2 * 0.5 : 2)); ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
         function draw() {
           if (!view || !geo) return;
-          var ctx = canvas.getContext('2d'), v = view, g = geo, r, c, i;
+          var ctx = canvas.getContext('2d'), v = view, g = geo, r, c, i, x, y;
           ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
           ctx.clearRect(0, 0, g.w, g.h);
-          /* Owned boxes first, as soft colour fills. */
+          /* The squares of the paper: a pencil grid at half the pitch of the dots. */
+          var step = g.cell / 2, off = g.pad % step;
+          ctx.strokeStyle = 'rgba(75,105,175,.22)'; ctx.lineWidth = 1;
+          ctx.beginPath();
+          for (x = off; x <= g.w + 0.5; x += step) { ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, g.h); }
+          for (y = off; y <= g.h + 0.5; y += step) { ctx.moveTo(0, Math.round(y) + 0.5); ctx.lineTo(g.w, Math.round(y) + 0.5); }
+          ctx.stroke();
+          /* Closed boxes: a light wash in the owner's colour, slightly uneven like a quick fill, and the initial. */
           for (i = 0; i < v.owner.length; i++) if (v.owner[i] >= 0) {
             r = Math.floor(i / v.w); c = i % v.w;
-            ctx.fillStyle = info.colors[v.owner[i]]; ctx.globalAlpha = 0.45;
-            ctx.fillRect(g.pad + c * g.cell + 2, g.pad + r * g.cell + 2, g.cell - 4, g.cell - 4);
+            var x0 = g.pad + c * g.cell, y0 = g.pad + r * g.cell, m = g.cell * 0.09, col = info.colors[v.owner[i]];
+            var j1 = (jit(i * 7 + 1) - 0.5) * m, j2 = (jit(i * 7 + 2) - 0.5) * m, j3 = (jit(i * 7 + 3) - 0.5) * m, j4 = (jit(i * 7 + 4) - 0.5) * m;
+            ctx.fillStyle = col; ctx.globalAlpha = 0.26;
+            ctx.beginPath();
+            ctx.moveTo(x0 + m + j1, y0 + m + j2); ctx.lineTo(x0 + g.cell - m + j3, y0 + m + j1);
+            ctx.lineTo(x0 + g.cell - m + j2, y0 + g.cell - m + j4); ctx.lineTo(x0 + m + j4, y0 + g.cell - m + j3);
+            ctx.closePath(); ctx.fill();
+            ctx.globalAlpha = 0.9; ctx.fillStyle = col;
+            ctx.font = '700 ' + Math.round(g.cell * 0.5) + 'px ' + PEN; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.save(); ctx.translate(x0 + g.cell / 2, y0 + g.cell / 2 + g.cell * 0.03); ctx.rotate((jit(i * 7 + 5) - 0.5) * 0.25);
+            ctx.fillText((info.names[v.owner[i]] || '').charAt(0).toUpperCase(), 0, 0); ctx.restore();
             ctx.globalAlpha = 1;
           }
-          /* The hovered edge as a faint preview. */
-          if (hover) { ctx.strokeStyle = 'rgba(0,0,0,.2)'; ctx.lineWidth = Math.max(3, g.cell * 0.12); ctx.lineCap = 'round'; strokeEdge(ctx, hover); }
-          /* Drawn edges in the colour of whoever drew them, the last one brighter. */
-          ctx.lineWidth = Math.max(3, g.cell * 0.12); ctx.lineCap = 'round';
-          for (i = 0; i < v.hl.length; i++) if (v.hl[i] >= 0) { ctx.strokeStyle = info.colors[v.hl[i]]; ctx.globalAlpha = v.last && v.last.h === i ? 1 : 0.8; strokeEdge(ctx, { h: i }); }
-          for (i = 0; i < v.vl.length; i++) if (v.vl[i] >= 0) { ctx.strokeStyle = info.colors[v.vl[i]]; ctx.globalAlpha = v.last && v.last.v === i ? 1 : 0.8; strokeEdge(ctx, { v: i }); }
-          ctx.globalAlpha = 1;
-          /* The dots on top. */
-          ctx.fillStyle = '#2b2622';
-          for (r = 0; r <= v.h; r++) for (c = 0; c <= v.w; c++) { ctx.beginPath(); ctx.arc(g.pad + c * g.cell, g.pad + r * g.cell, Math.max(3, g.cell * 0.1), 0, Math.PI * 2); ctx.fill(); }
-        }
-        function strokeEdge(ctx, a) {
-          var g = geo, v = view, r, c;
-          ctx.beginPath();
-          if (a.h != null) { r = Math.floor(a.h / v.w); c = a.h % v.w; ctx.moveTo(g.pad + c * g.cell, g.pad + r * g.cell); ctx.lineTo(g.pad + (c + 1) * g.cell, g.pad + r * g.cell); }
-          else { r = Math.floor(a.v / (v.w + 1)); c = a.v % (v.w + 1); ctx.moveTo(g.pad + c * g.cell, g.pad + r * g.cell); ctx.lineTo(g.pad + c * g.cell, g.pad + (r + 1) * g.cell); }
-          ctx.stroke();
+          /* The hovered edge as a faint pencil preview. */
+          if (hover) penStroke(ctx, hover, '#555', 0.25, 0.8);
+          /* The strokes in the colour of whoever drew them, the last one with a glow beneath. */
+          for (i = 0; i < v.hl.length; i++) if (v.hl[i] >= 0 && !(v.last && v.last.h === i)) penStroke(ctx, { h: i }, info.colors[v.hl[i]], 0.85);
+          for (i = 0; i < v.vl.length; i++) if (v.vl[i] >= 0 && !(v.last && v.last.v === i)) penStroke(ctx, { v: i }, info.colors[v.vl[i]], 0.85);
+          if (v.last) {
+            var lp = v.last.h != null ? v.hl[v.last.h] : v.vl[v.last.v];
+            if (lp >= 0) { penStroke(ctx, v.last, info.colors[lp], 0.28, 2.6); penStroke(ctx, v.last, info.colors[lp], 1); }
+          }
+          /* The ink dots on top, each a little uneven. */
+          ctx.fillStyle = '#1b1f3a';
+          var rad = Math.max(3, g.cell * 0.085);
+          for (r = 0; r <= v.h; r++) for (c = 0; c <= v.w; c++) {
+            var k = r * (v.w + 1) + c, q = jit(k * 3 + 100);
+            ctx.save(); ctx.translate(g.pad + c * g.cell, g.pad + r * g.cell); ctx.rotate(q * Math.PI);
+            ctx.beginPath(); ctx.ellipse(0, 0, rad * (1 + q * 0.12), rad * (1 - q * 0.1), 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+          }
         }
         var onResize = function () { if (view) { layout(view); draw(); } };
         window.addEventListener('resize', onResize);
@@ -234,7 +280,8 @@
             var ov = G.over(v);
             for (var p = 0; p < v.n; p++) {
               var d = document.createElement('div'); d.className = 'db-score' + (!ov && v.turn === p ? ' on' : ''); d.style.setProperty('--pc', inf.colors[p]);
-              d.innerHTML = '<i></i>' + inf.names[p] + ': ' + api.t('boxes', v.score[p]);
+              var pen = document.createElement('i'); d.appendChild(pen);
+              d.appendChild(document.createTextNode(inf.names[p] + ': ' + api.t('boxes', v.score[p])));
               scores.appendChild(d);
             }
             if (ov) hint.textContent = ov.winner >= 0 ? api.t('wins', inf.names[ov.winner]) : api.t('tie');

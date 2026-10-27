@@ -206,55 +206,110 @@
     },
     ui: {
       mount: function (el, api) {
+        var Gfx = root.Gfx;
         var wrap = document.createElement('div'); wrap.className = 'ludo';
-        var board = document.createElement('div'); board.className = 'ludo-board';
+        var board = document.createElement('div'); board.className = 'ludo-board gfx-paper gfx-frame';
         var side = document.createElement('div'); side.className = 'ludo-side';
-        var die = document.createElement('div'); die.className = 'ludo-die';
-        for (var k = 0; k < 9; k++) die.appendChild(document.createElement('i'));
-        var btn = document.createElement('button'); btn.className = 'ludo-btn';
+        var dieBox = document.createElement('button'); dieBox.className = 'ludo-die'; dieBox.type = 'button';
+        var btn = document.createElement('button'); btn.className = 'ludo-btn'; btn.type = 'button';
         var hint = document.createElement('div'); hint.className = 'ludo-hint';
-        side.appendChild(die); side.appendChild(btn); side.appendChild(hint);
+        side.appendChild(dieBox); side.appendChild(btn); side.appendChild(hint);
         wrap.appendChild(board); wrap.appendChild(side); el.appendChild(wrap);
+        /* The cross takes 11 by 11 cells; the paper keeps 0.85 cells of headroom above it so the tallest figure in
+           the top row ends at the frame, and a quarter cell below. Horizontal sizes are percent of the width, vertical
+           sizes percent of the height. */
+        var UX = 100 / 11, UY = 100 / 12.1, OY = 0.85, PW = UX, PH = UY * 58 / 40;
         var style = document.createElement('style');
         style.textContent = '.ludo{display:flex;flex-direction:column;align-items:center;gap:14px}' +
-          '.ludo-board{position:relative;width:min(100%,520px);aspect-ratio:1;background:#f4ead3;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.35)}' +
-          '.ludo-cell{position:absolute;width:9.0909%;height:9.0909%}.ludo-cell:before{content:"";position:absolute;inset:11%;border-radius:50%;background:#fff;border:2px solid #b8a37c;box-sizing:border-box}' +
-          '.ludo-cell.s0:before{background:var(--s0)}.ludo-cell.s1:before{background:var(--s1)}.ludo-cell.s2:before{background:var(--s2)}.ludo-cell.s3:before{background:var(--s3)}' +
-          '.ludo-cell.house:before,.ludo-cell.home:before{opacity:.75}.ludo-cell.start:before{border-color:#333}' +
-          '.ludo-piece{position:absolute;width:9.0909%;height:9.0909%;transition:left .45s ease,top .45s ease;z-index:2}' +
-          '.ludo-piece:before{content:"";position:absolute;inset:14%;border-radius:50%;background:var(--pc);box-shadow:inset -2px -4px 0 rgba(0,0,0,.3),inset 2px 3px 0 rgba(255,255,255,.35),0 2px 4px rgba(0,0,0,.45)}' +
-          '.ludo-piece.can{cursor:pointer;z-index:3}.ludo-piece.can:before{outline:3px solid #fff;animation:ludoPulse 1s ease-in-out infinite}' +
-          '.ludo-piece.last:before{box-shadow:0 0 0 2px rgba(0,0,0,.5),inset -2px -4px 0 rgba(0,0,0,.3)}' +
-          '@keyframes ludoPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}' +
-          '.ludo-side{display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:center}' +
-          '.ludo-die{width:64px;height:64px;border-radius:12px;background:#fff;display:grid;grid-template-columns:repeat(3,1fr);padding:9px;gap:4px;box-sizing:border-box;box-shadow:0 0 0 3px var(--turn,#888),0 4px 10px rgba(0,0,0,.3)}' +
-          '.ludo-die i{border-radius:50%;background:#222;display:block;visibility:hidden}.ludo-die.rolling{animation:ludoRoll .6s ease}' +
-          '@keyframes ludoRoll{0%{transform:rotate(0) scale(1)}50%{transform:rotate(200deg) scale(1.25)}100%{transform:rotate(360deg) scale(1)}}' +
-          '.ludo-btn{padding:10px 22px;border-radius:999px;border:0;font-size:16px;font-weight:600;cursor:pointer;background:#2456c8;color:#fff;box-shadow:0 3px 8px rgba(0,0,0,.3)}' +
-          '.ludo-hint{width:100%;text-align:center;font-size:14px;opacity:.85}';
+          '.ludo-board{position:relative;width:min(100%,560px);aspect-ratio:110/121;border-radius:4px}' +
+          '.ludo-board>svg{position:absolute;left:0;top:0;width:100%;height:100%;display:block}' +
+          '.ludo-piece{position:absolute;width:' + PW + '%;height:' + PH + '%;transition:left .09s linear,top .09s linear,transform .2s ease,filter .2s ease;z-index:2;cursor:default}' +
+          '.ludo-piece svg{width:100%;height:100%;display:block;overflow:visible}' +
+          '.ludo-piece{isolation:isolate}.ludo-piece:before{content:"";position:absolute;left:2%;width:96%;top:78%;height:30%;border-radius:50%;z-index:-1;opacity:0;background:radial-gradient(ellipse at center,rgba(255,255,255,.95) 0,var(--pc) 40%,transparent 72%);box-shadow:0 0 10px 3px var(--pc);transition:opacity .2s}' +
+          '.ludo-piece.ludo-can{cursor:pointer;z-index:20;animation:ludoLift 1.1s ease-in-out infinite}.ludo-piece.ludo-can:before{opacity:.95;animation:ludoGlow 1.1s ease-in-out infinite}' +
+          '@keyframes ludoGlow{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}' +
+          '@keyframes ludoLift{0%,100%{transform:translateY(-5%)}50%{transform:translateY(-11%)}}' +
+          '.ludo-piece.ludo-hop{animation:ludoHop var(--hop,90ms) ease-out}' +
+          '@keyframes ludoHop{0%{transform:translateY(0) scale(1)}45%{transform:translateY(-28%) scale(1.08)}100%{transform:translateY(0) scale(1)}}' +
+          '.ludo-piece.ludo-pop{animation:ludoPop .28s ease-in forwards;z-index:30}' +
+          '@keyframes ludoPop{0%{transform:scale(1);opacity:1}100%{transform:scale(1.7) translateY(-30%);opacity:0}}' +
+          '.ludo-piece.ludo-in{animation:ludoIn .3s ease-out}' +
+          '@keyframes ludoIn{0%{transform:scale(.3) translateY(-60%);opacity:0}100%{transform:scale(1) translateY(0);opacity:1}}' +
+          '.ludo-side{display:flex;align-items:center;gap:18px;flex-wrap:wrap;justify-content:center}' +
+          '.ludo-die{width:84px;height:84px;padding:4px 4px 0;border:0;background:transparent;border-radius:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 3px var(--turn,#888);transition:box-shadow .3s}' +
+          '.ludo-die svg{width:70px;height:77px;display:block;transition:transform .05s linear}' +
+          '.ludo-die.ludo-tumble svg{animation:ludoTumble .35s ease-out}' +
+          '@keyframes ludoTumble{0%{transform:translateY(-40%) rotate(-30deg) scale(1.15)}60%{transform:translateY(8%) rotate(10deg) scale(.95)}100%{transform:translateY(0) rotate(0) scale(1)}}' +
+          '.ludo-btn{min-height:46px;padding:0 28px;border-radius:999px;border:0;font-size:17px;font-weight:700;cursor:pointer;background:#2456c8;color:#fff;box-shadow:0 3px 8px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.25)}' +
+          '.ludo-btn:active{transform:translateY(1px)}' +
+          '.ludo-hint{width:100%;text-align:center;font-size:14px;opacity:.85;min-height:1.4em}';
         el.appendChild(style);
-        var U = 100 / 11;
-        function place(node, cr) { node.style.left = (cr[0] * U) + '%'; node.style.top = (cr[1] * U) + '%'; }
-        function cell(cr, cls) { var d = document.createElement('div'); d.className = 'ludo-cell ' + cls; place(d, cr); board.appendChild(d); }
-        CELLS.forEach(function (cr, idx) { cell(cr, 'track' + (idx % 10 === 0 ? ' start s' + (idx / 10) : '')); });
-        for (var seat = 0; seat < 4; seat++) {
-          HOMECOL[seat].forEach(function (cr) { cell(cr, 'home s' + seat); });
-          HOUSE[seat].forEach(function (cr) { cell(cr, 'house s' + seat); });
+        /* The printed board, drawn once per match as an SVG: thin track lines, the circles with a drop of shadow,
+           the coloured start fields, home columns and houses, and an arrow from each house to its start field. */
+        var ARROWS = [[[5, 21], [5, 38]], [[89, 5], [72, 5]], [[105, 89], [105, 72]], [[21, 105], [38, 105]]];
+        function cx(cr) { return cr[0] * 10 + 5; }
+        function cy(cr) { return cr[1] * 10 + 5; }
+        function field(cr, fill, rim, seat) {
+          var x = cx(cr), y = cy(cr);
+          return '<circle cx="' + (x + 0.35) + '" cy="' + (y + 0.55) + '" r="3.9" fill="rgba(60,40,20,.22)"/>' +
+            '<circle cx="' + x + '" cy="' + y + '" r="3.9" fill="' + fill + '" stroke="' + rim + '" stroke-width="0.45"/>' +
+            (seat ? '<circle cx="' + x + '" cy="' + y + '" r="3.1" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="0.7"/>' :
+              '<circle cx="' + x + '" cy="' + y + '" r="3.2" fill="none" stroke="rgba(90,70,40,.18)" stroke-width="0.6"/>');
         }
-        var pieceEls = [], view = null, info = null, acts = [];
-        function coords(v, p, i) {
-          var r = v.pos[p][i], seat = v.seats[p];
+        function buildBoard(seatColor) {
+          var s = '<svg viewBox="0 -8.5 110 121" xmlns="http://www.w3.org/2000/svg">', k, seat, col, a, dx, dy, len, ux, uy;
+          s += '<path d="M' + CELLS.map(function (cr) { return cx(cr) + ' ' + cy(cr); }).join(' L') + ' Z" fill="none" stroke="rgba(70,50,30,.55)" stroke-width="0.5"/>';
+          for (seat = 0; seat < 4; seat++) {
+            col = seatColor[seat];
+            s += '<path d="M' + cx(CELLS[seat * 10]) + ' ' + cy(CELLS[seat * 10]) + ' L' + HOMECOL[seat].map(function (cr) { return cx(cr) + ' ' + cy(cr); }).join(' L') + '" fill="none" stroke="rgba(70,50,30,.45)" stroke-width="0.5"/>';
+            a = ARROWS[seat]; dx = a[1][0] - a[0][0]; dy = a[1][1] - a[0][1]; len = Math.sqrt(dx * dx + dy * dy); ux = dx / len; uy = dy / len;
+            s += '<path d="M' + a[0][0] + ' ' + a[0][1] + ' L' + (a[1][0] - ux * 3) + ' ' + (a[1][1] - uy * 3) + '" stroke="' + col + '" stroke-width="1.6" stroke-linecap="round"/>' +
+              '<path d="M' + a[1][0] + ' ' + a[1][1] + ' L' + (a[1][0] - ux * 4.2 - uy * 2.6) + ' ' + (a[1][1] - uy * 4.2 + ux * 2.6) + ' L' + (a[1][0] - ux * 4.2 + uy * 2.6) + ' ' + (a[1][1] - uy * 4.2 - ux * 2.6) + ' Z" fill="' + col + '"/>';
+          }
+          for (k = 0; k < CELLS.length; k++) {
+            seat = k % 10 === 0 ? k / 10 : -1;
+            s += seat >= 0 ? field(CELLS[k], seatColor[seat], Gfx.shade(seatColor[seat], -0.45), true) : field(CELLS[k], '#fdfaf1', '#4a3b2a', false);
+          }
+          for (seat = 0; seat < 4; seat++) {
+            col = seatColor[seat];
+            HOMECOL[seat].forEach(function (cr) { s += field(cr, col, Gfx.shade(col, -0.45), true); });
+            HOUSE[seat].forEach(function (cr) { s += field(cr, col, Gfx.shade(col, -0.45), true); });
+          }
+          return s + '</svg>';
+        }
+        var pieceEls = [], view = null, info = null, acts = [], timers = [], built = false, busyUntil = {};
+        var dieTimers = [];
+        function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
+        function clearTimers() { timers.concat(dieTimers).forEach(clearTimeout); timers = []; dieTimers = []; }
+        /* Animations are queued per figure: a new move of a figure starts when its pending one has ended, so a
+           six followed by a second move plays as two hops in a row, and the host's next update never cuts it. */
+        function pending(key) { return (busyUntil[key] || 0) > Date.now(); }
+        function startAt(key) { return Math.max(Date.now(), busyUntil[key] || 0); }
+        function at(key, t, fn) { later(fn, Math.max(0, t - Date.now())); if (t > (busyUntil[key] || 0)) busyUntil[key] = t; }
+        function coords(v, p, i) { return relCoords(v, p, i, v.pos[p][i]); }
+        function relCoords(v, p, i, r) {
+          var seat = v.seats[p];
           if (r < 0) return HOUSE[seat][i];
           if (r < TRACK) return CELLS[(seat * 10 + r) % TRACK];
           return HOMECOL[seat][r - TRACK];
         }
-        function showDie(v) { for (var k = 0; k < 9; k++) die.children[k].style.visibility = v && DOTS[v].indexOf(k) >= 0 ? 'visible' : 'hidden'; }
+        /* A figure stands with its base on the circle: the base ellipse sits at 93 percent of the figure's height. */
+        function place(node, cr, instant) {
+          if (instant) node.style.transition = 'none';
+          node.style.left = (cr[0] * UX) + '%';
+          node.style.top = ((cr[1] + OY + 0.5) * UY - PH * 0.93) + '%';
+          node.style.zIndex = node.classList.contains('ludo-can') ? 20 : 2 + cr[1];
+          if (instant) { void node.offsetWidth; node.style.transition = ''; }
+        }
+        function restart(node, cls) { node.classList.remove(cls); void node.offsetWidth; node.classList.add(cls); }
+        function showDie(v, cls) { dieBox.innerHTML = Gfx.die(v, 70); if (cls) restart(dieBox, cls); }
         function hasAct(test) { return acts.some(test); }
-        btn.onclick = function () {
+        function roll() {
           if (!info || !info.canAct) return;
           if (hasAct(function (a) { return a.roll; })) api.act({ roll: true });
           else if (hasAct(function (a) { return a.pass; })) api.act({ pass: true });
-        };
+        }
+        btn.onclick = roll; dieBox.onclick = roll;
         function onPiece(ev) {
           if (!info || !info.canAct || !view) return;
           var p = +ev.currentTarget.dataset.p, i = +ev.currentTarget.dataset.i;
@@ -262,37 +317,73 @@
           if (hasAct(function (a) { return a.move === i; })) api.act({ move: i });
           else api.sound('wrong');
         }
+        /* The figure hops square by square from its old square to the new one, one hop per square, the whole move
+           inside about 400 ms so the next turn never catches it half way. Returns the duration. */
+        function hopAlong(node, v, p, i, from, to) {
+          var path = [], k, per, key = p + ':' + i, t0 = startAt(key);
+          if (from < 0) path.push(0); else for (k = from + 1; k <= to; k++) path.push(k);
+          per = Math.min(95, Math.round(400 / path.length));
+          at(key, t0, function () { node.style.setProperty('--hop', per + 'ms'); place(node, relCoords(v, p, i, from), true); });
+          path.forEach(function (r, idx) {
+            at(key, t0 + idx * per + 10, function () { place(node, relCoords(v, p, i, r)); restart(node, 'ludo-hop'); });
+          });
+          at(key, t0 + path.length * per + 20, function () { node.classList.remove('ludo-hop'); });
+          return t0 + path.length * per + 20;
+        }
         return {
           update: function (v, inf) {
             view = v; info = inf;
-            var ov = G.over(v), p, i, node, seatColor = ['#9aa0a6', '#9aa0a6', '#9aa0a6', '#9aa0a6'];
+            var ov = G.over(v), p, i, node, seatColor = ['#cfc5b0', '#cfc5b0', '#cfc5b0', '#cfc5b0'];
             for (p = 0; p < v.n; p++) seatColor[v.seats[p]] = inf.colors[p];
-            for (i = 0; i < 4; i++) board.style.setProperty('--s' + i, seatColor[i]);
-            if (!pieceEls.length) {
+            if (!built) {
+              built = true;
+              board.innerHTML = buildBoard(seatColor);
               for (p = 0; p < v.n; p++) {
                 pieceEls.push([]);
                 for (i = 0; i < PIECES; i++) {
                   node = document.createElement('div'); node.className = 'ludo-piece'; node.dataset.p = p; node.dataset.i = i;
-                  node.style.setProperty('--pc', inf.colors[p]); node.onclick = onPiece; board.appendChild(node); pieceEls[p].push(node);
+                  node.style.setProperty('--pc', inf.colors[p]); node.innerHTML = Gfx.pawn(inf.colors[p], 40);
+                  node.onclick = onPiece; board.appendChild(node); pieceEls[p].push(node);
                 }
               }
             }
             acts = inf.canAct && !ov ? G.actions(v, inf.me) : [];
+            var ev = inf.events || [], moved = null, hit = null, fast = root.App && root.App.fast;
+            ev.forEach(function (e) { if (e.e === 'move') moved = e; else if (e.e === 'capture') hit = e; });
+            if (fast) { moved = null; hit = null; busyUntil = {}; }
             for (p = 0; p < v.n; p++) for (i = 0; i < PIECES; i++) {
-              node = pieceEls[p][i]; place(node, coords(v, p, i));
-              node.classList.toggle('can', p === inf.me && hasAct(function (a) { return a.move === i; }));
-              node.classList.toggle('last', !!v.last && v.last.p === p && v.last.i === i);
+              node = pieceEls[p][i];
+              node.classList.toggle('ludo-can', p === inf.me && hasAct(function (a) { return a.move === i; }));
+              if (pending(p + ':' + i)) continue;
+              node.classList.remove('ludo-hop'); node.classList.remove('ludo-pop'); node.classList.remove('ludo-in');
+              if (moved && moved.p === p && moved.i === i) place(node, relCoords(v, p, i, moved.from), true);
+              else if (hit && hit.p === p && hit.i === i) place(node, relCoords(v, moved.p, moved.i, moved.to), true);
+              else place(node, coords(v, p, i), true);
             }
-            var ev = inf.events || [];
-            if (ev.some(function (e) { return e.e === 'dice'; })) {
-              die.classList.remove('rolling');
-              void die.offsetWidth;
-              die.classList.add('rolling');
+            if (moved) {
+              var mover = pieceEls[moved.p][moved.i], tEnd = hopAlong(mover, v, moved.p, moved.i, moved.from, moved.to);
+              if (hit) {
+                /* The hit figure waits on the square, pops away when the mover arrives and drops back into its house. */
+                var victim = pieceEls[hit.p][hit.i], vkey = hit.p + ':' + hit.i;
+                at(vkey, tEnd, function () { restart(victim, 'ludo-pop'); api.sound('capture'); });
+                at(vkey, tEnd + 300, function () { victim.classList.remove('ludo-pop'); place(victim, coords(v, hit.p, hit.i), true); restart(victim, 'ludo-in'); });
+                at(vkey, tEnd + 620, function () { victim.classList.remove('ludo-in'); });
+              }
+            }
+            if (ev.some(function (e) { return e.e === 'dice'; }) && !fast) {
+              /* The die tumbles: seven faces in quick succession, then the value. */
+              var faces = 7, f;
+              dieTimers.forEach(clearTimeout); dieTimers = [];
+              for (f = 0; f < faces; f++) (function (idx) {
+                dieTimers.push(setTimeout(function () {
+                  if (idx < faces - 1) { showDie(1 + Math.floor(Math.random() * 6)); dieBox.firstChild.style.transform = 'rotate(' + (Math.random() * 50 - 25) + 'deg) scale(' + (1 + Math.random() * 0.1) + ')'; }
+                  else showDie(v.die, 'ludo-tumble');
+                }, idx * 50));
+              })(f);
               api.sound('dice');
-            }
-            showDie(v.die);
-            if (ev.some(function (e) { return e.e === 'capture'; })) api.sound('capture');
-            else if (ev.some(function (e) { return e.e === 'move'; })) api.sound('move');
+            } else { dieTimers.forEach(clearTimeout); dieTimers = []; showDie(v.die); }
+            if (!hit && moved) api.sound('move');
+            else if (hit && fast) api.sound('capture');
             var canRoll = hasAct(function (a) { return a.roll; }), canPass = hasAct(function (a) { return a.pass; });
             btn.style.display = canRoll || canPass ? '' : 'none';
             btn.textContent = canRoll ? api.t('roll') : api.t('pass');
@@ -301,9 +392,9 @@
             else if (canRoll) hint.textContent = v.tries > 0 ? api.t('tries', v.tries + 1) : api.t('rollHint');
             else if (canPass) hint.textContent = api.t('noMove');
             else hint.textContent = api.t('pickHint');
-            die.style.setProperty('--turn', ov ? '#888' : inf.colors[v.turn]);
+            dieBox.style.setProperty('--turn', ov ? '#888' : inf.colors[v.turn]);
           },
-          destroy: function () { el.innerHTML = ''; }
+          destroy: function () { clearTimers(); el.innerHTML = ''; }
         };
       }
     }

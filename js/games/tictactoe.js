@@ -1,5 +1,5 @@
-/* Tic-tac-toe: three by three, three in a row wins. The rules, a perfect minimax AI at the hard level and a DOM
-   board with big tappable cells (see docs/CONTRACT.md). */
+/* Tic-tac-toe: three by three, three in a row wins. The rules, a perfect minimax AI at the hard level and a chalkboard
+   with chalk strokes for the marks (see docs/CONTRACT.md). */
 (function (root) {
   'use strict';
   var LINES = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
@@ -92,38 +92,95 @@
     },
     ui: {
       mount: function (el, api) {
-        var board = document.createElement('div'); board.className = 'ttt-board';
-        var hint = document.createElement('div'); hint.className = 'ttt-hint';
-        el.appendChild(board); el.appendChild(hint);
-        var cellsEl = [], view = null, info = null, marks = ['X', 'O'];
-        for (var i = 0; i < 9; i++) {
-          var d = document.createElement('div'); d.className = 'ttt-cell'; d.dataset.i = i;
+        var Gfx = root.Gfx;
+        function div(cls, parent) { var d = document.createElement('div'); d.className = cls; if (parent) parent.appendChild(d); return d; }
+        /* A chalkboard in a wooden frame: the grid, the marks and the winning line are chalk strokes in one SVG,
+           a wooden chalk tray below holds a stick of chalk per player, the current player's one is picked up. */
+        var wrap = div('ttt', el), frame = div('ttt-frame gfx-frame', wrap), slate = div('ttt-slate', frame), svgHost = div('ttt-svg', slate), grid = div('ttt-grid', slate);
+        var tray = div('ttt-tray gfx-wood', frame), chalks = [div('ttt-chalk', tray), div('ttt-chalk', tray)];
+        var hint = div('ttt-hint', wrap);
+        var cellsEl = [], view = null, info = null, marks = ['X', 'O'], drawn = {}, lineDrawn = false, i;
+        for (i = 0; i < 9; i++) {
+          var d = div('ttt-cell', grid); d.dataset.i = i;
           d.onclick = function (ev) {
             if (!info || !info.canAct) return;
             var at = +ev.currentTarget.dataset.i;
             if (view.cells[at] >= 0) { api.toast(api.t('taken')); return; }
             api.act({ at: at });
           };
-          board.appendChild(d); cellsEl.push(d);
+          cellsEl.push(d);
         }
         var style = document.createElement('style');
-        style.textContent = '.ttt-board{display:grid;grid-template-columns:repeat(3,1fr);gap:3%;padding:3%;background:#1e2a3a;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.35);max-width:min(100%,420px);margin:0 auto;aspect-ratio:1}' +
-          '.ttt-cell{display:flex;align-items:center;justify-content:center;background:#0e1724;border-radius:12px;cursor:pointer;font-weight:800;font-size:min(18vw,90px);line-height:1;user-select:none;transition:background .15s}' +
-          '.ttt-cell:hover{background:#15223a}.ttt-cell span{color:var(--pc);animation:tttpop .2s ease-out}.ttt-cell.last span{text-shadow:0 0 12px var(--pc)}' +
-          '.ttt-cell.win{background:#2a3b22;box-shadow:inset 0 0 0 3px #fff}' +
-          '@keyframes tttpop{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}.ttt-hint{text-align:center;margin-top:10px;font-size:14px;opacity:.8}';
+        style.textContent = '.ttt{width:0;min-width:100%}.ttt-frame{max-width:440px;margin:0 auto;border-radius:4px}' +
+          '.ttt-slate{position:relative;aspect-ratio:1;background-color:#2e4a3d;background-image:radial-gradient(ellipse at 30% 20%,rgba(255,255,255,.07),transparent 60%),radial-gradient(ellipse at 80% 90%,rgba(255,255,255,.05),transparent 50%),' + Gfx.noise(13, '#2e4a3d', '0.8', 3) + ';box-shadow:inset 0 0 40px rgba(0,0,0,.45),inset 0 0 0 1px rgba(0,0,0,.4)}' +
+          '.ttt-svg{position:absolute;inset:0}.ttt-svg svg{display:block;width:100%;height:100%}' +
+          '.ttt-grid{position:absolute;inset:0;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr)}.ttt-cell{cursor:pointer;-webkit-tap-highlight-color:transparent}' +
+          '.ttt-stroke{fill:none;stroke-linecap:round;stroke-linejoin:round}' +
+          '.ttt-anim{stroke-dasharray:1;stroke-dashoffset:1;animation:tttdraw .38s ease-out forwards}' +
+          '@keyframes tttdraw{to{stroke-dashoffset:0}}' +
+          '.ttt-tray{position:relative;height:30px;margin-top:6px;border-radius:2px;box-shadow:inset 0 3px 6px rgba(0,0,0,.5),0 -1px 0 rgba(0,0,0,.4)}' +
+          '.ttt-chalk{position:absolute;top:9px;width:46px;height:11px;border-radius:3px;transition:transform .25s,box-shadow .25s;box-shadow:0 2px 3px rgba(0,0,0,.6)}' +
+          '.ttt-chalk.on{transform:translateY(-7px) rotate(-8deg);box-shadow:0 6px 10px rgba(0,0,0,.6),0 0 10px rgba(255,255,255,.35)}' +
+          '.ttt-hint{text-align:center;margin-top:10px;font-size:14px;opacity:.85}';
         el.appendChild(style);
+        /* A deterministic wobble per stroke, so a redraw keeps the same chalk marks. */
+        function jit(seed, amp) { var x = Math.sin(seed * 127.1 + 311.7) * 43758.5453; return ((x - Math.floor(x)) - 0.5) * 2 * amp; }
+        function chalk(color) { return Gfx.shade(color, 0.3); }
+        function stroke(d, color, w, cls, delay) {
+          var s = 'stroke="' + color + '" class="ttt-stroke ' + cls + '" pathLength="1" style="animation-delay:' + delay + 's"';
+          return '<path d="' + d + '" ' + s + ' stroke-width="' + (w * 1.6) + '" opacity=".22"/>' +
+            '<path d="' + d + '" ' + s + ' stroke-width="' + w + '" opacity=".92"/>';
+        }
+        function cellCentre(c) { return { x: 50 + (c % 3) * 100, y: 50 + Math.floor(c / 3) * 100 }; }
+        function markPath(c, p, anim) {
+          var o = cellCentre(c), r = 28, s, col = chalk(info.colors[p]), a = anim ? 'ttt-anim' : '';
+          if (p === 0) {
+            var k = c * 4;
+            s = stroke('M' + (o.x - r + jit(k, 3)) + ' ' + (o.y - r + jit(k + 1, 3)) + ' Q' + (o.x + jit(k + 2, 6)) + ' ' + (o.y + jit(k + 3, 6)) + ' ' + (o.x + r + jit(k + 4, 3)) + ' ' + (o.y + r + jit(k + 5, 3)), col, 7, a, 0);
+            s += stroke('M' + (o.x + r + jit(k + 6, 3)) + ' ' + (o.y - r + jit(k + 7, 3)) + ' Q' + (o.x + jit(k + 8, 6)) + ' ' + (o.y + jit(k + 9, 6)) + ' ' + (o.x - r + jit(k + 10, 3)) + ' ' + (o.y + r + jit(k + 11, 3)), col, 7, a, anim ? 0.28 : 0);
+            return s;
+          }
+          var a0 = -1.9 + jit(c * 9, 0.3), a1 = a0 + 6.0, rx = r + jit(c * 9 + 1, 2), ry = r + jit(c * 9 + 2, 2);
+          var x0 = o.x + rx * Math.cos(a0), y0 = o.y + ry * Math.sin(a0), x1 = o.x + rx * Math.cos(a1), y1 = o.y + ry * Math.sin(a1);
+          var mid = a0 + 3.0, xm = o.x + rx * Math.cos(mid), ym = o.y + ry * Math.sin(mid);
+          return stroke('M' + x0 + ' ' + y0 + ' A' + rx + ' ' + ry + ' 0 0 1 ' + xm + ' ' + ym + ' A' + rx + ' ' + ry + ' 0 0 1 ' + x1 + ' ' + y1, col, 7, a, 0);
+        }
+        function draw(newMarks, newLine) {
+          var v = view, ov = G.over(v), s, c;
+          s = '<svg viewBox="0 0 300 300"><defs><filter id="tttchalk" x="-10%" y="-10%" width="120%" height="120%">' +
+            '<feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="3" seed="5" result="g"/>' +
+            '<feColorMatrix in="g" type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 2.4 -0.55" result="m"/>' +
+            '<feComposite in="SourceGraphic" in2="m" operator="in" result="t"/>' +
+            '<feTurbulence type="fractalNoise" baseFrequency="0.08" numOctaves="2" seed="9" result="w"/>' +
+            '<feDisplacementMap in="t" in2="w" scale="3" xChannelSelector="R" yChannelSelector="G"/></filter></defs><g filter="url(#tttchalk)">';
+          var white = '#eef0e6';
+          s += stroke('M' + (100 + jit(1, 2)) + ' 12 Q' + (100 + jit(2, 4)) + ' 150 ' + (100 + jit(3, 2)) + ' 288', white, 3.5, '', 0);
+          s += stroke('M' + (200 + jit(4, 2)) + ' 12 Q' + (200 + jit(5, 4)) + ' 150 ' + (200 + jit(6, 2)) + ' 288', white, 3.5, '', 0);
+          s += stroke('M12 ' + (100 + jit(7, 2)) + ' Q150 ' + (100 + jit(8, 4)) + ' 288 ' + (100 + jit(9, 2)), white, 3.5, '', 0);
+          s += stroke('M12 ' + (200 + jit(10, 2)) + ' Q150 ' + (200 + jit(11, 4)) + ' 288 ' + (200 + jit(12, 2)), white, 3.5, '', 0);
+          for (c = 0; c < 9; c++) if (v.cells[c] >= 0) s += markPath(c, v.cells[c], newMarks[c]);
+          if (ov && ov.line) {
+            var a = cellCentre(ov.line[0]), b = cellCentre(ov.line[2]), dx = b.x - a.x, dy = b.y - a.y, len = Math.sqrt(dx * dx + dy * dy), ex = dx / len * 22, ey = dy / len * 22;
+            s += stroke('M' + (a.x - ex) + ' ' + (a.y - ey) + ' Q' + ((a.x + b.x) / 2 + jit(20, 5)) + ' ' + ((a.y + b.y) / 2 + jit(21, 5)) + ' ' + (b.x + ex) + ' ' + (b.y + ey), white, 6, newLine ? 'ttt-anim' : '', newLine ? 0.55 : 0);
+          }
+          svgHost.innerHTML = s + '</g></svg>';
+        }
         return {
           update: function (v, inf) {
             view = v; info = inf;
-            var ov = G.over(v), line = ov && ov.line ? ov.line : [];
-            for (var i = 0; i < 9; i++) {
-              var p = v.cells[i], d = cellsEl[i];
-              d.innerHTML = p >= 0 ? '<span style="--pc:' + inf.colors[p] + '">' + marks[p] + '</span>' : '';
-              d.classList.toggle('win', line.indexOf(i) >= 0);
-              d.classList.toggle('last', i === v.last);
+            var ov = G.over(v), fast = !!(root.App && root.App.fast), newMarks = {}, c;
+            for (c = 0; c < 9; c++) { if (v.cells[c] >= 0 && !drawn[c] && !fast) newMarks[c] = true; drawn[c] = v.cells[c] >= 0; }
+            if (v.moves === 0) { drawn = {}; lineDrawn = false; }
+            var newLine = !!(ov && ov.line) && !lineDrawn && !fast;
+            lineDrawn = !!(ov && ov.line);
+            draw(newMarks, newLine);
+            for (c = 0; c < 2; c++) {
+              var ch = chalks[c], col = chalk(inf.colors[c]);
+              ch.style.left = c === 0 ? '22px' : 'auto'; ch.style.right = c === 1 ? '22px' : 'auto';
+              ch.style.background = 'linear-gradient(' + Gfx.shade(col, 0.35) + ',' + col + ' 55%,' + Gfx.shade(col, -0.25) + ')';
+              ch.classList.toggle('on', !ov && v.turn === c);
             }
-            board.style.cursor = inf.canAct ? 'pointer' : 'default';
+            grid.style.cursor = inf.canAct ? 'pointer' : 'default';
             if (ov) hint.textContent = ov.winner >= 0 ? api.t('wins', inf.names[ov.winner]) : api.t('draw');
             else hint.textContent = inf.canAct ? api.t('tap') + ' (' + api.t('plays', inf.names[v.turn], marks[v.turn]) + ')' : api.t('wait', inf.names[v.turn]);
           },

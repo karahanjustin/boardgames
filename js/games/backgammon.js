@@ -1,5 +1,5 @@
 /* Backgammon: two dice, 15 checkers each, bear them all off to win. The rules, an AI with a one ply evaluation and a
-   21 roll expectation over the reply at the hard level, and a canvas board (see docs/CONTRACT.md).
+   21 roll expectation over the reply at the hard level, and a folding wooden board drawn with the kit (see docs/CONTRACT.md).
    Coordinates are absolute, from player 0's view: points 0..23, the bar is 24 and off is 25. Player 0 moves from 23
    down to 0 (home board 0..5) and enters from the bar at 24 - die; player 1 moves from 0 up to 23 (home board
    18..23) and enters at die - 1. The state keeps pts[p][i] as the number of player p's checkers on point i. */
@@ -264,35 +264,76 @@
     },
     ui: {
       mount: function (el, api) {
-        var wrap = document.createElement('div'); wrap.className = 'bg-wrap';
-        var canvas = document.createElement('canvas'); canvas.className = 'bg-canvas';
-        var bar = document.createElement('div'); bar.className = 'bg-bar';
-        var status = document.createElement('div'); status.className = 'bg-status';
-        var btnRoll = document.createElement('button'); btnRoll.className = 'bg-btn'; btnRoll.textContent = api.t('roll');
-        var btnUndo = document.createElement('button'); btnUndo.className = 'bg-btn'; btnUndo.textContent = api.t('undo');
-        var btnPass = document.createElement('button'); btnPass.className = 'bg-btn'; btnPass.textContent = api.t('pass');
-        var pipsEl = document.createElement('div'); pipsEl.className = 'bg-pips';
-        bar.appendChild(status); bar.appendChild(btnRoll); bar.appendChild(btnUndo); bar.appendChild(btnPass);
-        wrap.appendChild(canvas); wrap.appendChild(bar); wrap.appendChild(pipsEl); el.appendChild(wrap);
+        var Gfx = root.Gfx;
+        function div(cls, parent) { var d = document.createElement('div'); d.className = cls; if (parent) parent.appendChild(d); return d; }
+        function button(key, parent) { var b = document.createElement('button'); b.className = 'bgm-btn'; b.textContent = api.t(key); parent.appendChild(b); return b; }
+        /* The folding board: a dark wooden frame, two leather fields, the bar with its hinges and recess in the middle,
+           the two off trays at the right. The points live in one SVG layer, the checkers are persistent elements so
+           a move can fly along an arc, rings and badges sit in their own layer, the dice in another. */
+        var wrap = div('bgm-wrap', el), board = div('bgm-board gfx-wood-dark', wrap);
+        var fieldL = div('bgm-field', board), fieldR = div('bgm-field', board);
+        var midEl = div('bgm-mid gfx-wood-dark', board), slotT = div('bgm-slot', midEl), slotB = div('bgm-slot', midEl), hingeT = div('bgm-hinge', midEl), hingeB = div('bgm-hinge', midEl);
+        var trays = [div('bgm-tray', board), div('bgm-tray', board)];
+        var pointsEl = div('bgm-layer', board), piecesEl = div('bgm-layer', board), ringsEl = div('bgm-layer', board), diceEl = div('bgm-layer', board), plaque = div('bgm-plaque', board);
+        plaque.hidden = true;
+        var ctl = div('bgm-ctl', wrap), status = div('bgm-status', ctl);
+        var btnRoll = button('roll', ctl), btnUndo = button('undo', ctl), btnPass = button('pass', ctl);
+        var pipsEl = div('bgm-pips', wrap);
         var style = document.createElement('style');
-        style.textContent = '.bg-wrap{max-width:min(100%,760px);margin:0 auto}.bg-canvas{display:block;width:100%;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.4);touch-action:manipulation;cursor:pointer}' +
-          '.bg-bar{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}.bg-status{flex:1;min-width:120px;font-size:14px;opacity:.85}' +
-          '.bg-btn{padding:8px 14px;border-radius:999px;border:0;background:#3b6fd6;color:#fff;font-weight:600;cursor:pointer;font-size:14px}.bg-btn[hidden]{display:none}.bg-btn:active{transform:scale(.97)}' +
-          '.bg-pips{display:flex;gap:16px;justify-content:center;margin-top:8px;font-size:13px;opacity:.7}';
+        style.textContent = '.bgm-wrap{width:0;min-width:100%;margin:0 auto;user-select:none;-webkit-user-select:none}' +
+          '.bgm-board{position:relative;margin:0 auto;border-radius:10px;overflow:hidden;touch-action:manipulation;cursor:pointer;box-shadow:0 14px 34px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.16),inset 0 -2px 0 rgba(0,0,0,.5)}' +
+          '.bgm-field{position:absolute;border-radius:3px;background-color:#c9a66a;background-image:' + Gfx.noise(23, '#c9a66a', '0.75', 2) + ';box-shadow:inset 0 3px 10px rgba(0,0,0,.6),inset 0 -1px 0 rgba(255,255,255,.25)}' +
+          '.bgm-mid{position:absolute;box-shadow:inset 0 0 0 1px rgba(0,0,0,.45),-3px 0 8px rgba(0,0,0,.45),3px 0 8px rgba(0,0,0,.45)}' +
+          '.bgm-slot{position:absolute;left:14%;width:72%;border-radius:4px;background:rgba(0,0,0,.38);box-shadow:inset 0 2px 6px rgba(0,0,0,.75),inset 0 -1px 0 rgba(255,255,255,.08)}' +
+          '.bgm-hinge{position:absolute;left:16%;width:68%;border-radius:2px;background:linear-gradient(#f6dc8e,#a07c2a 55%,#dcb95e);box-shadow:0 1px 2px rgba(0,0,0,.7)}' +
+          '.bgm-tray{position:absolute;border-radius:4px;background:rgba(0,0,0,.4);box-shadow:inset 0 2px 6px rgba(0,0,0,.75),inset 0 -1px 0 rgba(255,255,255,.08);transition:box-shadow .2s}' +
+          '.bgm-tray.hot{box-shadow:inset 0 0 0 2px rgba(255,255,255,.9),0 0 14px rgba(255,240,180,.9);animation:bgmpulse 1.1s ease-in-out infinite}' +
+          '.bgm-layer{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}.bgm-layer svg{display:block}' +
+          '.bgm-pc{position:absolute;left:0;top:0;will-change:transform}.bgm-pc .gfx{width:100%;height:100%;transition:transform .18s,filter .18s}' +
+          '.bgm-pc.lift .gfx{transform:translateY(-16%);filter:drop-shadow(0 0 5px rgba(255,236,170,.95))}' +
+          '.bgm-pc.sel .gfx{transform:translateY(-34%) scale(1.08);filter:drop-shadow(0 0 7px #fff)}.bgm-pc.lift,.bgm-pc.sel,.bgm-pc.fly{z-index:60!important}' +
+          '.bgm-edge{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border-radius:2px;box-shadow:0 1px 2px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.35)}' +
+          '.bgm-pc.off .gfx{display:none}.bgm-pc:not(.off) .bgm-edge{display:none}' +
+          '.bgm-ring{position:absolute;border-radius:50%;border:2px solid rgba(255,255,255,.92);box-shadow:0 0 10px 3px rgba(255,240,190,.6),inset 0 0 8px rgba(255,255,255,.45);animation:bgmpulse 1.1s ease-in-out infinite}' +
+          '@keyframes bgmpulse{50%{box-shadow:0 0 16px 6px rgba(255,240,190,.85),inset 0 0 10px rgba(255,255,255,.55)}}' +
+          '.bgm-cnt{position:absolute;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:#1d1a17;color:#fff;font:700 11px/18px sans-serif;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.7),inset 0 0 0 1px rgba(255,255,255,.25)}' +
+          '.bgm-off{position:absolute;color:#f1e6c8;font:700 12px/1 sans-serif;text-align:center;text-shadow:0 1px 2px rgba(0,0,0,.8);width:40px;margin-left:-20px}' +
+          '.bgm-die{position:absolute;transition:opacity .25s;filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))}.bgm-die.used{opacity:.32}.bgm-die.tumble{animation:bgmtumble .5s ease-out}' +
+          '@keyframes bgmtumble{0%{transform:translateY(-34px) rotate(-220deg) scale(.6)}65%{transform:translateY(3px) rotate(18deg) scale(1.04)}100%{transform:none}}' +
+          '.bgm-plaque{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(22,14,8,.86);color:#fff;padding:10px 22px;border-radius:12px;font-weight:800;font-size:18px;white-space:nowrap;box-shadow:0 8px 30px rgba(0,0,0,.6),inset 0 0 0 1px rgba(255,255,255,.22)}.bgm-plaque[hidden]{display:none}' +
+          '.bgm-ctl{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}.bgm-status{flex:1;min-width:120px;font-size:14px;opacity:.9}' +
+          '.bgm-btn{min-height:42px;padding:8px 18px;border-radius:999px;border:0;background:linear-gradient(#f3c75c,#c48f1e);color:#2a1a05;font-weight:700;cursor:pointer;font-size:15px;box-shadow:0 2px 6px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.5)}.bgm-btn[hidden]{display:none}.bgm-btn:active{transform:scale(.97)}' +
+          '.bgm-pips{display:flex;gap:16px;justify-content:center;margin-top:8px;font-size:13px;opacity:.85;flex-wrap:wrap}';
         el.appendChild(style);
         var view = null, info = null, geo = null, viewKey = '', seq = [], sel = null, work = null, maxLen = 0, byKey = {}, steps = [], seqs = [];
+        var pieces = [], destroyed = false, tumbleTimer = 0, tumbleEnd = 0;
+        /* The width on offer: the wrapper never pushes its container, so its width is the real room. */
+        function avail() { return Math.max(300, Math.min(wrap.clientWidth || el.clientWidth || 320, 760)); }
+        function fast() { return !!(root.App && root.App.fast); }
+        function px(n) { return Math.round(n * 100) / 100 + 'px'; }
         function layout() {
-          var W = Math.max(300, Math.min(el.clientWidth || 320, 760)), H = Math.round(W * 0.62), dpr = window.devicePixelRatio || 1;
-          canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); canvas.style.height = H + 'px';
-          var m = W * 0.015, tray = W * 0.085, barW = W * 0.07, inner = W - 2 * m - tray - barW, pw = inner / 12;
-          geo = { W: W, H: H, dpr: dpr, m: m, tray: tray, barW: barW, pw: pw, r: Math.min(pw * 0.46, H * 0.085), ph: H * 0.4 };
+          var W = avail(), H = Math.round(W * 0.62);
+          var m = W * 0.032, tray = W * 0.085, barW = W * 0.075, fs = m * 0.6, inner = W - 2 * m - barW - tray - fs, pw = inner / 12;
+          var dw = pw * 0.9, dh = dw * 0.8, step = dh * 0.8, trayH = H / 2 - m * 1.5;
+          var bt = Math.min(dh * 0.35, (trayH - dh * 0.9) / 16.5);
+          geo = { W: W, H: H, m: m, tray: tray, barW: barW, fs: fs, pw: pw, dw: dw, dh: dh, step: step, ph: (H - 2 * m) * 0.42, trayH: trayH, bt: bt };
+          board.style.width = px(W); board.style.height = px(H);
+          fieldL.style.left = px(m); fieldL.style.top = px(m); fieldL.style.width = px(6 * pw); fieldL.style.height = px(H - 2 * m);
+          fieldR.style.left = px(m + 6 * pw + barW); fieldR.style.top = px(m); fieldR.style.width = px(6 * pw); fieldR.style.height = px(H - 2 * m);
+          midEl.style.left = px(m + 6 * pw); midEl.style.top = '0'; midEl.style.width = px(barW); midEl.style.height = px(H);
+          var slotH = H / 2 - m - dh * 0.35;
+          slotT.style.top = px(m); slotT.style.height = px(slotH); slotB.style.bottom = px(m); slotB.style.height = px(slotH);
+          hingeT.style.top = px(m * 0.25); hingeT.style.height = px(m * 0.5); hingeB.style.bottom = px(m * 0.25); hingeB.style.height = px(m * 0.5);
+          trays[1].style.left = trays[0].style.left = px(W - m - tray); trays[1].style.width = trays[0].style.width = px(tray);
+          trays[1].style.top = px(m); trays[1].style.height = px(trayH); trays[0].style.top = px(H / 2 + m * 0.5); trays[0].style.height = px(trayH);
+          drawPoints();
         }
         function colX(c) { return geo.m + c * geo.pw + (c >= 6 ? geo.barW : 0); }
         function colOf(i) { return i >= 12 ? i - 12 : 11 - i; }
         /* The board location of a tap: a point index, 24 for the bar, 25 for the off trays or -1. */
         function placeAt(x, y) {
           var g = geo;
-          if (x > g.W - g.m - g.tray) return 25;
+          if (x > g.W - g.m - g.tray - g.fs) return 25;
           var xr = x - g.m;
           if (xr < 0) return -1;
           if (xr >= 6 * g.pw && xr < 6 * g.pw + g.barW) return 24;
@@ -300,14 +341,37 @@
           if (c < 0 || c > 11) return -1;
           return y < g.H / 2 ? 12 + c : 11 - c;
         }
-        /* The centre of the k-th checker on a place (0 is the first one on the point). */
+        /* The centre of the k-th checker on a place (0 is the first one on the point); beyond five they share the fifth slot. */
         function slot(place, p, k) {
-          var g = geo, x, y, step = g.r * 1.9;
-          if (place === 24) { x = g.m + 6 * g.pw + g.barW / 2; y = p === 0 ? g.H / 2 - g.r * 1.3 - k * step : g.H / 2 + g.r * 1.3 + k * step; return { x: x, y: y }; }
-          if (place === 25) { x = g.W - g.m - g.tray / 2; y = p === 0 ? g.H - g.m - g.r * 0.4 - k * g.r * 0.5 : g.m + g.r * 0.4 + k * g.r * 0.5; return { x: x, y: y }; }
+          var g = geo, x, y, kk = Math.min(k, 4);
+          if (place === 24) { x = g.m + 6 * g.pw + g.barW / 2; y = p === 0 ? g.H / 2 - g.dh * 0.95 - kk * g.step : g.H / 2 + g.dh * 0.95 + kk * g.step; return { x: x, y: y }; }
+          if (place === 25) { x = g.W - g.m - g.tray / 2; y = p === 0 ? g.H - g.m - g.bt * 0.7 - k * g.bt * 1.1 : g.m + g.bt * 0.7 + k * g.bt * 1.1; return { x: x, y: y }; }
           x = colX(colOf(place)) + g.pw / 2;
-          y = place >= 12 ? g.m + g.r + k * step : g.H - g.m - g.r - k * step;
+          y = place >= 12 ? g.m + g.dh * 0.52 + kk * g.step : g.H - g.m - g.dh * 0.52 - kk * g.step;
           return { x: x, y: y };
+        }
+        function stacksDown(place, p) { return (place >= 12 && place < 24) || (place === 24 && p === 1); }
+        /* The 24 points as long triangles in two alternating colours, with a gradient from base to tip, a thin
+           outline, the point numbers on the frame and a sheen on the points of the last move. */
+        function drawPoints() {
+          var g = geo, s, i, last = {};
+          if (view && view.last) view.last.moves.forEach(function (mv) { last[mv[1]] = true; });
+          s = '<svg width="' + g.W + '" height="' + g.H + '" viewBox="0 0 ' + g.W + ' ' + g.H + '"><defs>';
+          [['bgmAT', '#8a5428', '#5c3416', 0, 1], ['bgmAB', '#8a5428', '#5c3416', 1, 0], ['bgmBT', '#f1e2bd', '#d2b67f', 0, 1], ['bgmBB', '#f1e2bd', '#d2b67f', 1, 0]].forEach(function (d) {
+            s += '<linearGradient id="' + d[0] + '" x1="0" y1="' + d[3] + '" x2="0" y2="' + d[4] + '"><stop offset="0" stop-color="' + d[1] + '"/><stop offset="1" stop-color="' + d[2] + '"/></linearGradient>';
+          });
+          s += '</defs>';
+          var fs = Math.min(g.pw * 0.32, g.m * 0.78);
+          for (i = 0; i < 24; i++) {
+            var c = colOf(i), x0 = colX(c), top = i >= 12, dark = (i % 2 === 0) === top, path;
+            if (top) path = 'M' + x0 + ' ' + g.m + ' L' + (x0 + g.pw) + ' ' + g.m + ' L' + (x0 + g.pw / 2) + ' ' + (g.m + g.ph) + ' Z';
+            else path = 'M' + x0 + ' ' + (g.H - g.m) + ' L' + (x0 + g.pw) + ' ' + (g.H - g.m) + ' L' + (x0 + g.pw / 2) + ' ' + (g.H - g.m - g.ph) + ' Z';
+            s += '<path d="' + path + '" fill="url(#' + (dark ? 'bgmA' : 'bgmB') + (top ? 'T' : 'B') + ')" stroke="rgba(50,25,8,.5)" stroke-width="1" stroke-linejoin="round"/>';
+            if (last[i]) s += '<path d="' + path + '" fill="rgba(255,255,255,.16)"/>';
+            if (fs >= 7) s += '<text x="' + (x0 + g.pw / 2) + '" y="' + (top ? g.m * 0.5 + fs * 0.36 : g.H - g.m * 0.5 + fs * 0.36) + '" text-anchor="middle" font-size="' + fs + '" font-family="Georgia,serif" fill="rgba(240,220,170,.6)">' + (i + 1) + '</text>';
+          }
+          s += '</svg>';
+          pointsEl.innerHTML = s;
         }
         function remaining() {
           var rest = diceList(view.dice);
@@ -350,19 +414,18 @@
             if (a) { api.act(a); steps = []; }
             else { api.toast(api.t('badMove')); recompute(); }
           } else steps = computeSteps();
-          draw(); setStatus();
+          draw(true); setStatus();
         }
         function undo() {
           if (!seq.length) return;
           seq.pop(); sel = null;
           work = clonePos(posOf(view));
           for (var i = 0; i < seq.length; i++) applyMove(work, view.turn, seq[i]);
-          steps = computeSteps(); draw(); setStatus();
+          steps = computeSteps(); draw(true); setStatus();
         }
-        function tapPos(ev) { var b = canvas.getBoundingClientRect(); return { x: (ev.clientX - b.left) * (geo.W / b.width), y: (ev.clientY - b.top) * (geo.H / b.height) }; }
-        canvas.onclick = function (ev) {
+        board.onclick = function (ev) {
           if (!info || !info.canAct || !view || !view.dice || G.over(view)) return;
-          var q = tapPos(ev), i = placeAt(q.x, q.y), k;
+          var b = board.getBoundingClientRect(), i = placeAt(ev.clientX - b.left, ev.clientY - b.top), k;
           if (i < 0) return;
           if (sel != null) {
             for (k = 0; k < steps.length; k++) if (steps[k].from === sel && steps[k].to === i) { takeStep(steps[k]); return; }
@@ -370,7 +433,7 @@
           var isSource = false;
           for (k = 0; k < steps.length; k++) if (steps[k].from === i) isSource = true;
           if (isSource && i !== sel) sel = i; else { if (!isSource && sel == null) api.sound('wrong'); sel = null; }
-          draw(); setStatus();
+          draw(false); setStatus();
         };
         btnRoll.onclick = function () { if (info && info.canAct && view && !view.dice) api.act({ roll: true }); };
         btnPass.onclick = function () { if (info && info.canAct && view && view.dice && maxLen === 0) api.act({ pass: true }); };
@@ -395,98 +458,146 @@
             if (!ov && view.turn === p) d.style.fontWeight = '700';
             pipsEl.appendChild(d);
           }
+          plaque.hidden = !ov;
+          if (ov) { plaque.textContent = api.t('wins', info.names[ov.winner]); plaque.style.color = Gfx.shade(info.colors[ov.winner], 0.35); }
         }
-        function checker(ctx, x, y, color, ring) {
-          var r = geo.r;
-          ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
-          ctx.fillStyle = color; ctx.fill();
-          ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.stroke();
-          ctx.beginPath(); ctx.arc(x, y, r * 0.6, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1.5; ctx.stroke();
-          if (ring) { ctx.beginPath(); ctx.arc(x, y, r + 3, 0, Math.PI * 2); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke(); }
+        /* ---------- the checkers as persistent elements ---------- */
+        function makePiece(p, place) {
+          var d = div('bgm-pc', piecesEl), edge = div('bgm-edge');
+          d.innerHTML = Gfx.disc(info.colors[p], 40);
+          edge.style.background = 'linear-gradient(' + Gfx.shade(info.colors[p], 0.3) + ',' + info.colors[p] + ' 50%,' + Gfx.shade(info.colors[p], -0.4) + ')';
+          d.appendChild(edge);
+          return { p: p, place: place, k: 0, x: -1, y: -1, el: d, edge: edge, raf: 0 };
         }
-        function die(ctx, x, y, size, v, dim) {
-          ctx.globalAlpha = dim ? 0.35 : 1;
-          ctx.fillStyle = '#fbf7ee'; ctx.strokeStyle = '#555'; ctx.lineWidth = 1.5;
-          roundRect(ctx, x - size / 2, y - size / 2, size, size, size * 0.18); ctx.fill(); ctx.stroke();
-          var pipR = size * 0.09, o = size * 0.26, dots = { 1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]], 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]], 5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], 6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]] }[v] || [];
-          ctx.fillStyle = '#222';
-          for (var i = 0; i < dots.length; i++) { ctx.beginPath(); ctx.arc(x + dots[i][0] * o, y + dots[i][1] * o, pipR, 0, Math.PI * 2); ctx.fill(); }
-          ctx.globalAlpha = 1;
+        function groupPieces() {
+          var g = {};
+          pieces.forEach(function (pc) { var key = pc.p + ':' + pc.place; (g[key] = g[key] || []).push(pc); });
+          for (var key in g) g[key].sort(function (a, b) { return a.k - b.k; });
+          return g;
         }
-        function roundRect(ctx, x, y, w, h, r) {
-          ctx.beginPath(); ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r); ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-          ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r); ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
+        function countAt(pos, p, place) { return place === 24 ? pos.bar[p] : place === 25 ? pos.off[p] : pos.pts[p][place]; }
+        /* Brings the checker elements to the given position: checkers that left a place fly to the places that
+           gained one, the rest stay where they are. */
+        function reconcile(pos, animate) {
+          var groups = groupPieces(), surplus = [[], []], deficit = [[], []], moved = [], p, place, key, arr, n, j;
+          if (!pieces.length) {
+            for (p = 0; p < 2; p++) for (place = 0; place < 26; place++) for (j = 0; j < countAt(pos, p, place); j++) pieces.push(makePiece(p, place));
+            groups = groupPieces(); animate = false;
+          }
+          for (p = 0; p < 2; p++) for (place = 0; place < 26; place++) {
+            key = p + ':' + place; arr = groups[key] || []; n = countAt(pos, p, place);
+            if (arr.length > n) surplus[p] = surplus[p].concat(arr.slice(n));
+            else for (j = arr.length; j < n; j++) deficit[p].push(place);
+          }
+          for (p = 0; p < 2; p++) for (j = 0; j < deficit[p].length; j++) {
+            var pc = surplus[p].shift();
+            if (!pc) { pc = makePiece(p, deficit[p][j]); pieces.push(pc); animate = false; }
+            pc.place = deficit[p][j]; pc.k = 99; moved.push(pc);
+          }
+          for (p = 0; p < 2; p++) surplus[p].forEach(function (pc) { piecesEl.removeChild(pc.el); pieces.splice(pieces.indexOf(pc), 1); });
+          groups = groupPieces();
+          for (key in groups) groups[key].forEach(function (pc, k) { pc.k = k; });
+          var delay = 0;
+          pieces.forEach(function (pc) {
+            var s = slot(pc.place, pc.p, pc.k), down = stacksDown(pc.place, pc.p), z = 10 + (pc.place === 25 ? pc.k : down ? Math.min(pc.k, 4) : 9 - Math.min(pc.k, 4));
+            pc.el.style.width = px(geo.dw); pc.el.style.height = px(geo.dh); pc.el.style.marginLeft = px(-geo.dw / 2); pc.el.style.marginTop = px(-geo.dh / 2);
+            pc.edge.style.width = px(geo.tray * 0.74); pc.edge.style.height = px(geo.bt);
+            pc.el.classList.toggle('off', pc.place === 25);
+            pc.z = z; pc.el.style.zIndex = z;
+            var wasMoved = moved.indexOf(pc) >= 0 && pc.x >= 0;
+            if (animate && !fast() && wasMoved) { fly(pc, pc.x, pc.y, s.x, s.y, delay); delay += 110; }
+            else { if (pc.raf) { cancelAnimationFrame(pc.raf); pc.raf = 0; pc.el.classList.remove('fly'); } pc.el.style.transform = 'translate(' + px(s.x) + ',' + px(s.y) + ')'; }
+            pc.x = s.x; pc.y = s.y;
+          });
         }
-        function draw() {
+        /* A checker flies along an arc: it lifts, grows a little at the top and settles on the target. */
+        function fly(pc, x0, y0, x1, y1, delay) {
+          var t0 = null, dur = 320, lift = geo.dh * 0.7;
+          pc.el.classList.add('fly');
+          function frame(ts) {
+            if (destroyed) return;
+            if (t0 === null) t0 = ts;
+            var t = (ts - t0 - delay) / dur;
+            if (t < 0) t = 0; if (t > 1) t = 1;
+            var e = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t, a = Math.sin(Math.PI * t);
+            var x = x0 + (x1 - x0) * e, y = y0 + (y1 - y0) * e - a * lift, s = 1 + 0.18 * a;
+            pc.el.style.transform = 'translate(' + px(x) + ',' + px(y) + ') scale(' + s.toFixed(3) + ')';
+            if (t < 1) pc.raf = requestAnimationFrame(frame);
+            else { pc.raf = 0; pc.el.classList.remove('fly'); pc.el.style.transform = 'translate(' + px(x1) + ',' + px(y1) + ')'; }
+          }
+          if (pc.raf) cancelAnimationFrame(pc.raf);
+          pc.raf = requestAnimationFrame(frame);
+        }
+        /* Lifts the movable checkers, rings the legal targets, counts the tall stacks and the borne off checkers. */
+        function decorate(pos) {
+          var groups = groupPieces(), sourceSet = {}, targetSet = {}, k, key, h = '';
+          if (info && info.canAct && !G.over(view)) for (k = 0; k < steps.length; k++) { sourceSet[steps[k].from] = true; if (sel != null && steps[k].from === sel) targetSet[steps[k].to] = true; }
+          for (key in groups) {
+            var arr = groups[key], top = arr[arr.length - 1], p = top.p, place = top.place;
+            arr.forEach(function (pc) { pc.el.classList.remove('lift'); pc.el.classList.remove('sel'); });
+            if (place === 25) {
+              var ls = slot(25, p, 0);
+              h += '<div class="bgm-off" style="left:' + px(ls.x) + ';top:' + px(p === 0 ? geo.H / 2 + geo.m * 0.5 + geo.bt * 0.6 : geo.H / 2 - geo.m * 0.5 - geo.bt * 0.6 - 12) + '">' + arr.length + '</div>';
+              continue;
+            }
+            if (arr.length > 5) { var ts = slot(place, p, 4); h += '<div class="bgm-cnt" style="left:' + px(ts.x) + ';top:' + px(ts.y - geo.dh * 0.05) + ';z-index:70">' + arr.length + '</div>'; }
+            if (view.turn === p && info.canAct && sourceSet[place]) top.el.classList.add(sel === place ? 'sel' : 'lift');
+          }
+          trays[0].classList.remove('hot'); trays[1].classList.remove('hot');
+          if (sel != null) for (var tk in targetSet) {
+            var t = +tk, tp = view.turn;
+            if (t === 25) { trays[tp].classList.add('hot'); continue; }
+            var cnt = countAt(pos, tp, t), rs = slot(t, tp, Math.min(cnt, 5)), rw = geo.dw * 0.92, rh = geo.dh * 0.5;
+            h += '<div class="bgm-ring" style="left:' + px(rs.x - rw / 2) + ';top:' + px(rs.y - rh / 2 - geo.dh * 0.08) + ';width:' + px(rw) + ';height:' + px(rh) + '"></div>';
+          }
+          ringsEl.innerHTML = h;
+        }
+        /* The dice on the mover's side, used dice dimmed; a roll tumbles through random faces first. */
+        function renderDice(tumble) {
+          diceEl.innerHTML = '';
+          if (!view.dice || G.over(view)) return;
+          var g = geo, list = diceList(view.dice), rest = remaining().slice(), i;
+          var size = Math.min(list.length > 2 ? g.pw * 0.78 : g.pw * 0.95, (g.H - 2 * g.m) * 0.15), gap = size * 1.25;
+          var cx = (view.turn === 0 ? colX(6) : colX(0)) + 3 * g.pw, startX = cx - gap * (list.length - 1) / 2;
+          for (i = 0; i < list.length; i++) {
+            var idx = rest.indexOf(list[i]), used = idx < 0;
+            if (!used) rest.splice(idx, 1);
+            var d = div('bgm-die' + (used ? ' used' : '') + (tumble && !used ? ' tumble' : ''), diceEl);
+            d.style.left = px(startX + i * gap - size / 2); d.style.top = px(g.H / 2 - size * 0.55); d.style.width = px(size);
+            d.innerHTML = Gfx.die(list[i], size); d.dataset.v = list[i];
+          }
+          if (tumble) {
+            clearInterval(tumbleTimer); tumbleEnd = Date.now() + 420;
+            tumbleTimer = setInterval(function () {
+              var ds = diceEl.querySelectorAll('.bgm-die.tumble'), done = Date.now() >= tumbleEnd, j;
+              for (j = 0; j < ds.length; j++) ds[j].innerHTML = Gfx.die(done ? +ds[j].dataset.v : 1 + Math.floor(Math.random() * 6), parseFloat(ds[j].style.width));
+              if (done) clearInterval(tumbleTimer);
+            }, 70);
+          }
+        }
+        function draw(animate, tumble) {
           if (!view || !geo) return;
-          var ctx = canvas.getContext('2d'), g = geo, i, k, p, pos = work || posOf(view), ov = G.over(view);
-          ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
-          ctx.fillStyle = '#5a3a22'; ctx.fillRect(0, 0, g.W, g.H);
-          ctx.fillStyle = '#c9a86f'; ctx.fillRect(g.m, g.m, 6 * g.pw, g.H - 2 * g.m); ctx.fillRect(g.m + 6 * g.pw + g.barW, g.m, 6 * g.pw, g.H - 2 * g.m);
-          ctx.fillStyle = '#3e2816'; ctx.fillRect(g.W - g.m - g.tray, g.m, g.tray, g.H - 2 * g.m);
-          /* The 24 points as triangles. */
-          for (i = 0; i < 24; i++) {
-            var c = colOf(i), x0 = colX(c), top = i >= 12;
-            ctx.beginPath();
-            if (top) { ctx.moveTo(x0, g.m); ctx.lineTo(x0 + g.pw, g.m); ctx.lineTo(x0 + g.pw / 2, g.m + g.ph); }
-            else { ctx.moveTo(x0, g.H - g.m); ctx.lineTo(x0 + g.pw, g.H - g.m); ctx.lineTo(x0 + g.pw / 2, g.H - g.m - g.ph); }
-            ctx.closePath();
-            ctx.fillStyle = (i % 2 === 0) === top ? '#8b5a2b' : '#efdcb0'; ctx.fill();
-            var lastHere = view.last && view.last.moves.some(function (m) { return m[1] === i; });
-            if (lastHere) { ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fill(); }
-            ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.font = Math.round(g.pw * 0.28) + 'px sans-serif'; ctx.textAlign = 'center';
-            ctx.fillText(String(i + 1), x0 + g.pw / 2, top ? g.H / 2 - g.pw * 0.25 : g.H / 2 + g.pw * 0.45);
-          }
-          /* Checkers on the points, on the bar and in the trays. */
-          var sourceSet = {}, targetSet = {};
-          if (info && info.canAct) for (k = 0; k < steps.length; k++) { if (sel == null) sourceSet[steps[k].from] = true; else if (steps[k].from === sel) targetSet[steps[k].to] = true; }
-          for (p = 0; p < 2; p++) {
-            for (i = 0; i < 24; i++) {
-              var n = pos.pts[p][i];
-              for (k = 0; k < Math.min(n, 5); k++) { var sl = slot(i, p, k); checker(ctx, sl.x, sl.y, info.colors[p], k === Math.min(n, 5) - 1 && (sourceSet[i] || sel === i) && view.turn === p); }
-              if (n > 5) { var tl = slot(i, p, 4); ctx.fillStyle = '#fff'; ctx.font = 'bold ' + Math.round(g.r) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(n), tl.x, tl.y); ctx.textBaseline = 'alphabetic'; }
-            }
-            for (k = 0; k < Math.min(pos.bar[p], 5); k++) { var bs = slot(24, p, k); checker(ctx, bs.x, bs.y, info.colors[p], k === Math.min(pos.bar[p], 5) - 1 && (sourceSet[24] || sel === 24) && view.turn === p); }
-            if (pos.bar[p] > 5) { var bl = slot(24, p, 4); ctx.fillStyle = '#fff'; ctx.font = 'bold ' + Math.round(g.r) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(pos.bar[p]), bl.x, bl.y); ctx.textBaseline = 'alphabetic'; }
-            for (k = 0; k < pos.off[p]; k++) { var os = slot(25, p, k); ctx.fillStyle = info.colors[p]; roundRect(ctx, os.x - g.tray * 0.38, os.y - g.r * 0.2, g.tray * 0.76, g.r * 0.4, 3); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 1; ctx.stroke(); }
-            if (pos.off[p]) { var ol = slot(25, p, 0); ctx.fillStyle = '#fff'; ctx.font = 'bold ' + Math.round(g.r * 0.9) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(String(pos.off[p]), ol.x, p === 0 ? ol.y - g.r * 1.2 : ol.y + g.r * 2); }
-          }
-          /* Legal targets as glowing markers. */
-          if (sel != null) {
-            for (var tKey in targetSet) {
-              var t = +tKey, tp = view.turn, cnt = t === 25 ? pos.off[tp] : pos.pts[tp][t], ts = slot(t, tp, Math.min(cnt, 5));
-              if (t === 25) { ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fillRect(g.W - g.m - g.tray, tp === 0 ? g.H / 2 : g.m, g.tray, g.H / 2 - g.m); }
-              else { ctx.beginPath(); ctx.arc(ts.x, ts.y, g.r * 0.8, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); }
-            }
-          }
-          /* Dice in the middle of the quadrant on the mover's side, used dice dimmed. */
-          if (view.dice && !ov) {
-            var list = diceList(view.dice), rest = remaining().slice(), size = Math.min(g.pw * 0.85, g.H * 0.11), cx = view.turn === 0 ? colX(8) + g.pw : colX(2) + g.pw;
-            var gap = size * 1.25, startX = cx - gap * (list.length - 1) / 2;
-            for (i = 0; i < list.length; i++) {
-              var idx = rest.indexOf(list[i]), used = idx < 0;
-              if (!used) rest.splice(idx, 1);
-              die(ctx, startX + i * gap, g.H / 2, size, list[i], used);
-            }
-          }
-          /* The result inside the board as well. */
-          if (ov) {
-            ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(g.W * 0.2, g.H / 2 - g.H * 0.09, g.W * 0.6, g.H * 0.18);
-            ctx.fillStyle = info.colors[ov.winner]; ctx.font = 'bold ' + Math.round(g.H * 0.07) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(api.t('wins', info.names[ov.winner]), g.W / 2, g.H / 2); ctx.textBaseline = 'alphabetic';
-          }
+          var pos = work || posOf(view);
+          reconcile(pos, animate);
+          decorate(pos);
+          renderDice(tumble);
         }
-        var onResize = function () { if (view) { layout(); draw(); } };
+        var onResize = function () { if (view) { layout(); draw(false); } };
         window.addEventListener('resize', onResize);
+        /* The first update may run before the panel has its final width: measure again on the next frame and on every resize of the panel. */
+        var ro = null, raf = requestAnimationFrame(onResize);
+        if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(function () { if (view && geo && avail() !== geo.W) onResize(); }); ro.observe(el); }
         return {
           update: function (v, inf) {
             view = v; info = inf;
-            var k = JSON.stringify(v);
-            if (k !== viewKey) { viewKey = k; recompute(); }
-            (inf.events || []).forEach(function (e) { if (e.e === 'dice') api.sound('dice'); else if (e.e === 'hit') api.sound('capture'); });
-            layout(); draw(); setStatus();
+            var k = JSON.stringify(v), changed = k !== viewKey, evs = inf.events || [];
+            if (changed) { viewKey = k; recompute(); }
+            evs.forEach(function (e) { if (e.e === 'dice') api.sound('dice'); else if (e.e === 'hit') api.sound('capture'); });
+            if (!geo || avail() !== geo.W) layout(); else drawPoints();
+            draw(changed, !fast() && evs.some(function (e) { return e.e === 'dice'; }));
+            setStatus();
           },
-          destroy: function () { window.removeEventListener('resize', onResize); el.innerHTML = ''; }
+          destroy: function () { destroyed = true; clearInterval(tumbleTimer); cancelAnimationFrame(raf); if (ro) ro.disconnect(); pieces.forEach(function (pc) { if (pc.raf) cancelAnimationFrame(pc.raf); }); window.removeEventListener('resize', onResize); el.innerHTML = ''; }
         };
       }
     }
